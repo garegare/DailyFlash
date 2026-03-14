@@ -6,19 +6,25 @@ import { SourceFilter } from "./SourceFilter";
 export function Dashboard() {
   const { items, loading, error, refresh, clearStore } = useDashboard();
   const [activeSource, setActiveSource] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const sources = useMemo(
     () => [...new Set(items.map((i) => i.source_name))].sort(),
     [items],
   );
 
-  const filtered = useMemo(
-    () =>
-      activeSource
-        ? items.filter((i) => i.source_name === activeSource)
-        : items,
-    [items, activeSource],
-  );
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return items.filter((i) => {
+      if (activeSource && i.source_name !== activeSource) return false;
+      if (!q) return true;
+      return (
+        i.title.toLowerCase().includes(q) ||
+        (i.body?.toLowerCase().includes(q) ?? false) ||
+        i.tags.some((t) => t.toLowerCase().includes(q))
+      );
+    });
+  }, [items, activeSource, query]);
 
   return (
     <div className="dashboard">
@@ -34,6 +40,22 @@ export function Dashboard() {
           </button>
         </div>
       </header>
+
+      <div className="search-bar">
+        <span className="search-icon">🔍</span>
+        <input
+          className="search-input"
+          type="text"
+          placeholder="タイトル・説明・タグで絞り込み…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        {query && (
+          <button className="search-clear" onClick={() => setQuery("")} title="クリア">
+            ✕
+          </button>
+        )}
+      </div>
 
       {sources.length > 0 && (
         <SourceFilter
