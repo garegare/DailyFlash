@@ -113,27 +113,46 @@ DailyFlash は「情報の蓄積」を意図的に排除したダッシュボー
 
 ```
 DailyFlash/
-├── src/                          # フロントエンド (React)
-│   ├── App.tsx
-│   ├── components/
+├── index.html                    # Vite エントリポイント
+├── package.json                  # フロントエンド依存関係
+├── vite.config.ts                # Vite 設定 (port 1420)
+├── tsconfig.json                 # TypeScript 設定
+├── src/                          # フロントエンド (React + TypeScript)
+│   ├── main.tsx                  # React エントリポイント
+│   ├── index.css                 # グローバルスタイル
+│   ├── App.tsx                   # ルートコンポーネント
+│   ├── components/               # (予定)
 │   │   ├── Dashboard.tsx         # メインダッシュボード
 │   │   ├── ItemCard.tsx          # アイテム表示カード
 │   │   └── SourceFilter.tsx      # ソース別フィルタ
-│   └── hooks/
+│   └── hooks/                    # (予定)
 │       └── useDashboard.ts       # Tauri IPC フック
 ├── src-tauri/
+│   ├── Cargo.toml                # Rust 依存関係
+│   ├── Cargo.lock
+│   ├── build.rs                  # Tauri ビルドスクリプト
+│   ├── tauri.conf.json           # Tauri アプリ設定
+│   ├── capabilities/
+│   │   └── default.json          # セキュリティ権限設定
+│   ├── icons/                    # アプリアイコン
+│   │   ├── icon.png
+│   │   ├── 32x32.png
+│   │   ├── 128x128.png
+│   │   └── 512x512.png
 │   └── src/
-│       ├── main.rs               # エントリポイント・Tauri コマンド定義
-│       ├── config.rs             # Config.toml 読み込みと構造体定義
-│       ├── store.rs              # DashStore: RwLock + RingBuffer 実装
-│       ├── scheduler.rs          # Pull 定期実行スケジューラ
-│       ├── server.rs             # axum Push 受信サーバー
-│       ├── error.rs              # 統一エラー型定義
-│       └── connectors/
+│       ├── main.rs               # エントリポイント
+│       ├── lib.rs                # Tauri ランナー・コマンド定義 (予定)
+│       ├── config.rs             # (予定) Config.toml 読み込みと構造体定義
+│       ├── store.rs              # (予定) DashStore: RwLock + RingBuffer 実装
+│       ├── scheduler.rs          # (予定) Pull 定期実行スケジューラ
+│       ├── server.rs             # (予定) axum Push 受信サーバー
+│       ├── error.rs              # (予定) 統一エラー型定義
+│       └── connectors/           # (予定)
 │           ├── mod.rs            # Connector トレイト定義
 │           ├── rss.rs            # RSS/Atom コネクタ実装
-│           └── github.rs         # (将来) GitHub コネクタ
-├── Config.toml                   # ユーザー設定ファイル
+│           └── github.rs         # GitHub コネクタ
+├── Config.toml                   # (予定) ユーザー設定ファイル
+├── .gitignore
 └── README.md
 ```
 
@@ -377,13 +396,21 @@ pub enum AppError {
 
 - Rust (stable)
 - Node.js 20+
-- Tauri CLI (`cargo install tauri-cli`)
+- Tauri CLI v2 (`cargo install tauri-cli --version "^2.0.0" --locked`)
+
+### セットアップ
+
+```bash
+npm install
+```
 
 ### 開発サーバー起動
 
 ```bash
 cargo tauri dev
 ```
+
+Vite devサーバー (port 1420) が自動起動し、React フロントエンドを表示するウィンドウが開く。
 
 ### プロダクションビルド
 
