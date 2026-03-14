@@ -42,8 +42,7 @@ impl Connector for RssConnector {
 
         let today = Local::now().date_naive();
         let cutoff = today - Duration::days(self.lookback_days as i64);
-
-        let items = feed
+        let items: Vec<DashItem> = feed
             .entries
             .into_iter()
             .filter_map(|entry| {

@@ -84,7 +84,39 @@ impl Config {
     }
 
     pub fn load_or_default() -> Self {
-        Self::load("Config.toml").unwrap_or_else(|_| Config::default_config())
+        // 実行バイナリの場所を基準に Config.toml を探す
+        let candidates = Self::config_candidates();
+        for path in &candidates {
+            if path.exists() {
+                match Self::load(&path.to_string_lossy()) {
+                    Ok(c) => {
+                        eprintln!("[config] loaded {}", path.display());
+                        return c;
+                    }
+                    Err(e) => eprintln!("[config] parse error {}: {e}", path.display()),
+                }
+            }
+        }
+        eprintln!("[config] Config.toml not found, using defaults");
+        Config::default_config()
+    }
+
+    fn config_candidates() -> Vec<std::path::PathBuf> {
+        let mut candidates = vec![
+            std::path::PathBuf::from("Config.toml"),        // cwd/Config.toml
+            std::path::PathBuf::from("../Config.toml"),     // cwd/../Config.toml (dev: src-tauri/../)
+        ];
+        // 実行バイナリ隣の Config.toml
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                candidates.push(dir.join("Config.toml"));
+                // macOS アプリバンドル内: Contents/MacOS/../../../
+                if let Some(parent) = dir.parent() {
+                    candidates.push(parent.join("Config.toml"));
+                }
+            }
+        }
+        candidates
     }
 
     fn default_config() -> Self {
