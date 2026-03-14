@@ -1,0 +1,43 @@
+[server]
+port = 8080
+auth_token = "your-secret-token-here"
+
+[memory]
+default_capacity = 50
+# ソース個別のオーバーライド (未実装・将来対応)
+# [memory.overrides]
+# "my-ci" = 100
+
+[sources.rss]
+poll_interval_secs = 300
+lookback_days = 3  # 当日を含む過去 N 日分を表示 (0 = 当日のみ)
+
+[[sources.rss.feeds]]
+id = "hacker-news"
+name = "Hacker News"
+url = "https://news.ycombinator.com/rss"
+icon = "hn"
+
+[[sources.rss.feeds]]
+id = "rust-blog"
+name = "Rust Blog"
+url = "https://blog.rust-lang.org/feed.xml"
+icon = "rust"
+
+[[sources.rss.feeds]]
+id = "zenn"
+name = "Zenn"
+url = "https://zenn.dev/feed"
+icon = "zenn"
+
+[[sources.rss.feeds]]
+id = "qiita"
+name = "Qiita"
+url = "https://qiita.com/popular-items/feed.atom"
+icon = "qiita"
+
+[windows]
+startup = false
+notifications = true
+tray_icon = true
+start_hidden = false

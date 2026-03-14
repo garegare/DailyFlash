@@ -1,0 +1,26 @@
+[package]
+name = "daily-flash"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "daily_flash_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+axum = "0.8"
+reqwest = { version = "0.12", features = ["json"] }
+feed-rs = "2"
+chrono = { version = "0.4", features = ["serde"] }
+toml = "0.8"
+async-trait = "0.1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }

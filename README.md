@@ -15,8 +15,8 @@
 5. [ディレクトリ構造](#5-ディレクトリ構造)
 6. [データフロー](#6-データフロー)
 7. [コネクタ設計](#7-コネクタ設計)
-8. [Push受信サーバー仕様](#8-push受信サーバー仕様)
-9. [Windows常駐仕様](#9-windows常駐仕様)
+8. [Push 受信サーバー仕様](#8-push受信サーバー仕様)
+9. [Windows 常駐仕様](#9-windows常駐仕様)
 10. [設定ファイル仕様](#10-設定ファイル仕様)
 11. [エラーハンドリング方針](#11-エラーハンドリング方針)
 12. [フロントエンド設計](#12-フロントエンド設計)
@@ -30,8 +30,9 @@
 DailyFlash は「情報の蓄積」を意図的に排除したダッシュボードアプリ。
 
 - **揮発性**: アプリ終了でデータは完全消去。永続ストレージへの書き込みは行わない
-- **今日限定**: RSS・Push いずれも「当日」のアイテムのみを表示対象とする
+- **ルックバック表示**: 当日＋直近 N 日（`lookback_days`）のアイテムを表示対象とする
 - **低コンテキスト負荷**: 読み切れなかった情報は翌日には存在しない設計
+- **ブラウザ連携**: アイテムカードをクリックするとシステムデフォルトブラウザで URL を開く
 
 ---
 
@@ -40,10 +41,11 @@ DailyFlash は「情報の蓄積」を意図的に排除したダッシュボー
 | 概念 | 説明 |
 |------|------|
 | **エフェメラル** | プロセス終了 = データ消去。SQLite・ファイルキャッシュ等への永続化は行わない |
-| **コネクタ方式** | `Connector` トレイトで抽象化された Pull 型ソース（RSS, GitHub 等）を動的に追加可能 |
+| **コネクタ方式** | `Connector` トレイトで抽象化された Pull 型ソース（RSS/Atom 等）を動的に追加可能 |
 | **プッシュ受容** | 内蔵 HTTP サーバーが外部アプリ（CI、監視ツール等）からのリアルタイム通知を受信 |
-| **リングバッファ** | ソースごとに最大保持件数を設定。容量超過時は最古アイテムを自動破棄 |
+| **リングバッファ** | 全ソース共通の最大保持件数を設定。容量超過時は最古アイテムを自動破棄 |
 | **重複排除** | アイテムを `(source_id, item_id)` の組でハッシュ管理し、Pull 周期をまたいだ重複追加を防止 |
+| **時系列混在表示** | 複数ソースのアイテムを `published_at` 降順でソートし、ソースに関係なく時系列に表示 |
 
 ---
 
@@ -53,26 +55,24 @@ DailyFlash は「情報の蓄積」を意図的に排除したダッシュボー
 
 | ライブラリ | 用途 |
 |-----------|------|
-| `tauri` | デスクトップアプリ基盤・IPC |
+| `tauri` v2 | デスクトップアプリ基盤・IPC |
 | `tokio` | 非同期ランタイム |
 | `axum` | Push 受信用ローカル HTTP サーバー |
 | `reqwest` | RSS 取得用 HTTP クライアント |
 | `feed-rs` | RSS/Atom フィード解析 |
 | `chrono` | 日付フィルタリング |
 | `serde` / `toml` | 設定ファイル管理 |
-| `async_trait` | 非同期トレイト実装 |
-| `tokio::sync::RwLock` | DashStore のスレッドセーフ読み書き |
+| `async-trait` | 非同期トレイト実装 |
+| `thiserror` | 統一エラー型定義 |
+| `tauri-plugin-opener` | システムブラウザでの URL オープン |
 
 ### フロントエンド (TypeScript)
 
 | ライブラリ | 用途 |
 |-----------|------|
 | `React` | UI フレームワーク |
-| `@tauri-apps/api` | Tauri IPC バインディング |
-| `TanStack Query` | コマンド呼び出しとキャッシュ管理 |
-| `Tailwind CSS` | スタイリング |
-
-> **フロントエンド技術選定の補足**: Svelte も候補だが、エコシステムの広さと型安全性から React + TypeScript を採用。状態管理は TanStack Query で Tauri コマンドを `queryFn` として扱うことで、ポーリング間隔制御・ローディング状態管理を一元化できる。
+| `@tauri-apps/api` | Tauri IPC バインディング（invoke / listen） |
+| `@tauri-apps/plugin-opener` | ブラウザで URL を開く |
 
 ---
 
@@ -82,28 +82,30 @@ DailyFlash は「情報の蓄積」を意図的に排除したダッシュボー
 ┌─────────────────────────────────────────────────────────┐
 │  Tauri App (Rust プロセス)                               │
 │                                                         │
-│  ┌──────────┐   Pull (定期)   ┌────────────────────┐   │
-│  │ Connector │ ─────────────→ │                    │   │
-│  │  (RSS等)  │                │    DashStore       │   │
-│  └──────────┘                │  (Arc<RwLock<      │   │
-│                              │   RingBuffer>>)    │   │
-│  ┌──────────┐   Push (即時)  │                    │   │
-│  │  axum    │ ─────────────→ │                    │   │
-│  │  Server  │                └────────┬───────────┘   │
-│  └──────────┘                         │               │
-│                                       │ emit event    │
-│  ┌──────────────────────┐             ↓               │
-│  │  Tauri Commands      │  ←── refresh_dashboard      │
-│  │  - refresh_dashboard │                             │
-│  │  - get_config        │                             │
-│  └──────────┬───────────┘                             │
-└─────────────│───────────────────────────────────────────┘
+│  ┌──────────┐   Pull (起動直後 + 定期)  ┌─────────────┐  │
+│  │ Connector │ ──────────────────────→ │             │  │
+│  │  (RSS等)  │                         │  DashStore  │  │
+│  └──────────┘                         │ (Arc<RwLock │  │
+│                                       │  <RingBuf>>) │  │
+│  ┌──────────┐   Push (即時)           │             │  │
+│  │  axum    │ ──────────────────────→ │             │  │
+│  │  Server  │                         └──────┬──────┘  │
+│  └──────────┘                                │         │
+│                                              │ emit    │
+│  ┌──────────────────────┐                    ↓         │
+│  │  Tauri Commands      │  ←── refresh_dashboard       │
+│  │  - refresh_dashboard │                              │
+│  │  - get_config        │                              │
+│  │  - clear_store       │                              │
+│  └──────────┬───────────┘                              │
+└─────────────│────────────────────────────────────────── ┘
               │ IPC (invoke / listen)
 ┌─────────────↓───────────────────────────────────────────┐
 │  WebView (React フロントエンド)                          │
-│  - アイテム一覧表示                                     │
-│  - ソースフィルタ / ソート                              │
-│  - Push 受信時のリアルタイム更新                        │
+│  - published_at 降順でアイテム一覧表示                  │
+│  - ソース別フィルタ（チップ UI）                        │
+│  - カードクリック → システムブラウザで URL を開く       │
+│  - dashboard_updated イベントでリアルタイム更新         │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -113,27 +115,42 @@ DailyFlash は「情報の蓄積」を意図的に排除したダッシュボー
 
 ```
 DailyFlash/
-├── src/                          # フロントエンド (React)
-│   ├── App.tsx
+├── index.html                    # Vite エントリポイント
+├── package.json                  # フロントエンド依存関係
+├── vite.config.ts                # Vite 設定 (port 1420)
+├── tsconfig.json                 # TypeScript 設定
+├── src/                          # フロントエンド (React + TypeScript)
+│   ├── main.tsx                  # React エントリポイント
+│   ├── index.css                 # グローバルスタイル
+│   ├── App.tsx                   # ルートコンポーネント
 │   ├── components/
-│   │   ├── Dashboard.tsx         # メインダッシュボード
-│   │   ├── ItemCard.tsx          # アイテム表示カード
-│   │   └── SourceFilter.tsx      # ソース別フィルタ
+│   │   ├── Dashboard.tsx         # メインダッシュボード（フィルタ・一覧）
+│   │   ├── ItemCard.tsx          # アイテムカード（日時・タイトル・タグ・ブラウザ連携）
+│   │   └── SourceFilter.tsx      # ソース別フィルタ（チップ UI）
 │   └── hooks/
-│       └── useDashboard.ts       # Tauri IPC フック
+│       └── useDashboard.ts       # Tauri IPC フック（invoke / listen / polling）
 ├── src-tauri/
+│   ├── Cargo.toml                # Rust 依存関係
+│   ├── Cargo.lock
+│   ├── build.rs                  # Tauri ビルドスクリプト
+│   ├── tauri.conf.json           # Tauri アプリ設定
+│   ├── capabilities/
+│   │   └── default.json          # セキュリティ権限設定（opener 含む）
+│   ├── icons/                    # アプリアイコン
 │   └── src/
-│       ├── main.rs               # エントリポイント・Tauri コマンド定義
+│       ├── main.rs               # エントリポイント
+│       ├── lib.rs                # Tauri ランナー・コマンド定義・setup
 │       ├── config.rs             # Config.toml 読み込みと構造体定義
 │       ├── store.rs              # DashStore: RwLock + RingBuffer 実装
-│       ├── scheduler.rs          # Pull 定期実行スケジューラ
+│       ├── scheduler.rs          # Pull スケジューラ（起動直後に即時実行）
 │       ├── server.rs             # axum Push 受信サーバー
 │       ├── error.rs              # 統一エラー型定義
 │       └── connectors/
 │           ├── mod.rs            # Connector トレイト定義
-│           ├── rss.rs            # RSS/Atom コネクタ実装
-│           └── github.rs         # (将来) GitHub コネクタ
-├── Config.toml                   # ユーザー設定ファイル
+│           └── rss.rs            # RSS/Atom コネクタ実装（lookback_days フィルタ）
+├── Config.toml                   # ローカル設定ファイル (.gitignore 済み)
+├── Config.toml.example           # 設定ファイルのサンプル
+├── .gitignore
 └── README.md
 ```
 
@@ -145,21 +162,23 @@ DailyFlash/
 
 ```
 アプリ起動
-  └─ Config.toml 読み込み
+  └─ Config.toml 読み込み（複数パス候補を順に検索）
   └─ DashStore (RingBuffer) をメモリ上に生成
   └─ Connector インスタンスを Config から構築
-  └─ Pull スケジューラ起動 (Tokio spawn)
-  └─ Push サーバー起動 (axum, Tokio spawn)
-  └─ フロントエンドに ready イベント送信
+  └─ Pull スケジューラ起動
+      └─ 起動直後に即時 fetch 実行
+      └─ 以降 poll_interval_secs ごとに fetch
+  └─ Push サーバー起動 (axum, 127.0.0.1:8080)
 ```
 
 ### 6.2 Pull 処理（定期実行）
 
 ```
-スケジューラ tick (interval: Config 値)
-  └─ 全 Connector を並行実行 (tokio::join_all)
-      └─ HTTP GET → フィード解析
-      └─ 「今日」のアイテムのみフィルタ (chrono)
+スケジューラ tick (poll_interval_secs)
+  └─ 全 Connector を並行実行
+      └─ HTTP GET → フィード解析 (feed-rs)
+      └─ published_at が cutoff 以降のアイテムのみ通過
+         cutoff = today - lookback_days
       └─ 重複チェック (HashSet<(source_id, item_id)>)
       └─ DashStore.push(item) → リングバッファへ追加
   └─ フロントエンドに dashboard_updated イベント emit
@@ -173,15 +192,16 @@ POST /push リクエスト受信
   └─ JSON デシリアライズ → DashItem
   └─ DashStore.push(item)
   └─ フロントエンドに dashboard_updated イベント emit
-  └─ バックグラウンド時: OS 通知トースト表示
 ```
 
 ### 6.4 表示処理
 
 ```
-フロントエンド (dashboard_updated イベント受信 または 手動リフレッシュ)
+フロントエンド (dashboard_updated イベント受信 または 30 秒フォールバック polling)
   └─ invoke("refresh_dashboard") → DashStore 全件 JSON 取得
+  └─ published_at 降順でソート（Rust 側 + フロントエンド側で二重保証）
   └─ React state 更新 → 再描画
+  └─ カードクリック → openUrl() でシステムブラウザを起動
 ```
 
 ---
@@ -196,7 +216,7 @@ pub trait Connector: Send + Sync {
     /// ソース識別子 (Config のキーと対応)
     fn source_id(&self) -> &str;
 
-    /// 最新アイテムを取得し、今日分のみを返す
+    /// 最新アイテムを取得し、lookback_days 以内のもののみを返す
     async fn fetch(&self) -> Result<Vec<DashItem>, ConnectorError>;
 }
 ```
@@ -212,7 +232,7 @@ pub struct DashItem {
     pub body: Option<String>,    // 本文サマリ (任意)
     pub url: Option<String>,
     pub published_at: DateTime<Local>,
-    pub tags: Vec<String>,       // Push 側でのカテゴリ分類等に使用
+    pub tags: Vec<String>,
 }
 ```
 
@@ -221,7 +241,7 @@ pub struct DashItem {
 1. `connectors/` 以下に新ファイルを作成
 2. `Connector` トレイトを実装
 3. `Config.toml` に対応するソース設定を追加
-4. `main.rs` のコネクタ初期化ロジックに登録
+4. `lib.rs` のコネクタ初期化ロジックに登録
 
 ---
 
@@ -275,7 +295,7 @@ pub struct DashItem {
 
 ## 10. 設定ファイル仕様
 
-**パス**: アプリと同階層の `Config.toml`（将来的には `%APPDATA%/DailyFlash/Config.toml`）
+**パス検索順**: `./Config.toml` → `../Config.toml` → 実行バイナリ同階層 → その親ディレクトリ
 
 ```toml
 [server]
@@ -283,26 +303,22 @@ port = 8080
 auth_token = "your-secret-token-here"
 
 [memory]
-# ソースごとのリングバッファ最大保持件数
+# 全ソース共通のリングバッファ最大保持件数
 default_capacity = 50
-# ソース個別のオーバーライド
-# [memory.overrides]
-# "my-ci" = 100
 
 [sources.rss]
 poll_interval_secs = 300  # Pull 間隔 (秒)
+lookback_days = 3         # 当日 + 直近 N 日分を表示対象とする
 
 [[sources.rss.feeds]]
-id = "hacker-news"
-name = "Hacker News"
-url = "https://news.ycombinator.com/rss"
-icon = "hn"  # 組み込みアイコン識別子 or URL
+id = "zenn"
+name = "Zenn"
+url = "https://zenn.dev/feed"
 
 [[sources.rss.feeds]]
-id = "rust-blog"
-name = "Rust Blog"
-url = "https://blog.rust-lang.org/feed.xml"
-icon = "rust"
+id = "qiita"
+name = "Qiita"
+url = "https://qiita.com/popular-items/feed.atom"
 
 [windows]
 startup = false          # ログイン時の自動起動
@@ -311,21 +327,26 @@ tray_icon = true         # タスクトレイアイコン表示
 start_hidden = false     # 起動時にウィンドウを非表示にする
 ```
 
+### lookback_days について
+
+デフォルト値: `3`
+
+当日分のみを対象とすると、週末や祝日など記事が少ない日にダッシュボードが空になる。`lookback_days` を設定することで「今日 + 直近 N 日」のアイテムを表示し、常に情報が表示される状態を維持する。
+
 ---
 
 ## 11. エラーハンドリング方針
 
 ### コネクタのエラー
 
-- **失敗しても他ソースに影響させない**: 各コネクタは独立した `tokio::spawn` で実行し、エラーはログ出力のみ
+- **失敗しても他ソースに影響させない**: 各コネクタは独立した非同期タスクで実行し、エラーはログ出力のみ
 - **リトライ**: 次の Pull 周期まで待機（即時リトライは行わない）
-- **UI への通知**: フロントエンドのソースカード上に「最終更新失敗」インジケータを表示
 
 ### Push サーバーのエラー
 
 - 不正トークン → `401`
 - バリデーション失敗 → `422` + エラー詳細 JSON
-- DashStore 書き込み失敗 → `500`（実運用上はほぼ発生しない）
+- DashStore 書き込み失敗 → `500`
 
 ### 統一エラー型
 
@@ -338,6 +359,8 @@ pub enum AppError {
     Connector { source_id: String, message: String },
     #[error("Auth token mismatch")]
     Unauthorized,
+    #[error("Validation error: {0}")]
+    Validation(String),
 }
 ```
 
@@ -349,7 +372,7 @@ pub enum AppError {
 
 | 種別 | 名前 | 方向 | 説明 |
 |------|------|------|------|
-| Command | `refresh_dashboard` | Front → Back | 全アイテム取得 |
+| Command | `refresh_dashboard` | Front → Back | 全アイテム取得（published_at 降順） |
 | Command | `get_config` | Front → Back | 現在の設定取得 |
 | Command | `clear_store` | Front → Back | 手動でストアをクリア |
 | Event | `dashboard_updated` | Back → Front | 新規アイテム追加通知 |
@@ -358,16 +381,22 @@ pub enum AppError {
 
 ```
 <App>
-  ├── <TitleBar>        ウィンドウ制御・手動リフレッシュボタン
-  ├── <SourceFilter>    ソース別フィルタ（チップ UI）
   └── <Dashboard>
-        └── <ItemCard>  各アイテムカード（タイトル・ソース名・時刻・URL）
+        ├── <header>       アイテム件数・更新ボタン (↻)・クリアボタン (✕)
+        ├── <SourceFilter> ソース別フィルタ（チップ UI）
+        └── <ItemCard>     各アイテムカード
+              ├── ソース名 / 年月日時刻
+              ├── タイトル（クリックでブラウザ起動）
+              ├── 本文サマリ（3 行クランプ）
+              └── タグ一覧
 ```
 
-### ポーリング vs イベント駆動
+### useDashboard フック
 
-- **基本**: `dashboard_updated` イベントを `listen()` でリアルタイム受信
-- **フォールバック**: TanStack Query の `refetchInterval` で 30 秒ごとに `refresh_dashboard` を呼び出し（イベント取りこぼし対策）
+- 初回マウント時に `refresh_dashboard` を呼び出し
+- `dashboard_updated` イベントを `listen()` でリアルタイム受信
+- 30 秒フォールバック polling（イベント取りこぼし対策）
+- フロントエンド側でも `published_at` 降順ソートを適用
 
 ---
 
@@ -377,13 +406,28 @@ pub enum AppError {
 
 - Rust (stable)
 - Node.js 20+
-- Tauri CLI (`cargo install tauri-cli`)
+- Tauri CLI v2 (`cargo install tauri-cli --version "^2.0.0" --locked`)
+
+### セットアップ
+
+```bash
+git clone <repo>
+cd DailyFlash
+npm install
+
+# Config.toml を作成（サンプルをコピーして編集）
+cp Config.toml.example Config.toml
+```
 
 ### 開発サーバー起動
 
 ```bash
 cargo tauri dev
+# または
+npm run tauri
 ```
+
+Vite dev サーバー (port 1420) が自動起動し、React フロントエンドを表示するウィンドウが開く。
 
 ### プロダクションビルド
 
@@ -401,7 +445,9 @@ curl -X POST http://localhost:8080/push \
     "source_id": "test",
     "source_name": "Manual Test",
     "title": "テスト通知",
-    "body": "DailyFlash の Push 受信テストです"
+    "body": "DailyFlash の Push 受信テストです",
+    "url": "https://example.com",
+    "tags": ["test"]
   }'
 ```
 
@@ -414,9 +460,10 @@ curl -X POST http://localhost:8080/push \
 | **GitHub コネクタ** | 自分のリポジトリの今日のイベント（PR, Issue, CI）を Pull |
 | **Slack Webhook 受信** | Slack の Outgoing Webhook を DailyFlash の Push に中継 |
 | **キーワードフィルタ** | Config で設定したキーワードを含むアイテムをハイライト or 除外 |
-| **アイテム詳細パネル** | クリックで本文・メタデータをサイドパネルに表示 |
-| **macOS 対応** | `window.hide()` / トレイ挙動の macOS 向け実装 |
+| **タスクトレイ常駐** | ウィンドウ「×」で最小化、トレイアイコンから再表示 |
 | **ホットキー** | グローバルショートカットでウィンドウの表示/非表示トグル |
+| **アイテム詳細パネル** | クリックで本文・メタデータをサイドパネルに展開表示 |
+| **フィード個別 lookback_days** | ソースごとに異なるルックバック日数を設定可能にする |
 
 ---
 

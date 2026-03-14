@@ -1,0 +1,15 @@
+# Rust build artifacts
+src-tauri/target/
+
+# Node.js
+node_modules/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# User config (example is tracked, actual config is not)
+Config.toml
