@@ -21,6 +21,11 @@ export function useDashboard() {
   const refresh = useCallback(async () => {
     try {
       const data = await invoke<DashItem[]>("refresh_dashboard");
+      // published_at 降順でソート（複数ソース混在時に確実に時系列順にする）
+      data.sort(
+        (a, b) =>
+          new Date(b.published_at).getTime() - new Date(a.published_at).getTime(),
+      );
       setItems(data);
       setError(null);
     } catch (e) {

@@ -1,3 +1,4 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type { DashItem } from "../hooks/useDashboard";
 
 interface Props {
@@ -5,10 +6,22 @@ interface Props {
 }
 
 export function ItemCard({ item }: Props) {
-  const time = new Date(item.published_at).toLocaleTimeString("ja-JP", {
+  const dt = new Date(item.published_at);
+  const time = dt.toLocaleDateString("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }) + " " + dt.toLocaleTimeString("ja-JP", {
     hour: "2-digit",
     minute: "2-digit",
   });
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (item.url) {
+      e.preventDefault();
+      openUrl(item.url);
+    }
+  };
 
   return (
     <article className="item-card">
@@ -18,7 +31,7 @@ export function ItemCard({ item }: Props) {
       </div>
       <h3 className="item-title">
         {item.url ? (
-          <a href={item.url} target="_blank" rel="noopener noreferrer">
+          <a href={item.url} onClick={handleClick}>
             {item.title}
           </a>
         ) : (

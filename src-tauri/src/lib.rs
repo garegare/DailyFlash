@@ -41,6 +41,7 @@ pub fn run() {
     let store = DashStore::new(config.memory.default_capacity);
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .manage(config.clone())
         .manage(store.clone())
         .invoke_handler(tauri::generate_handler![
