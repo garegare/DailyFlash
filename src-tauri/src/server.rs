@@ -51,7 +51,7 @@ pub fn start(app: AppHandle, store: DashStore, port: u16, auth_token: String) {
         .route("/push", post(push_handler))
         .with_state(Arc::new(state));
 
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}"))
             .await
             .expect("failed to bind push server");

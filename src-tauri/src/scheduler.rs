@@ -13,7 +13,7 @@ pub fn start(
     connectors: Vec<Arc<dyn Connector>>,
     interval_secs: u64,
 ) {
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let mut ticker = time::interval(Duration::from_secs(interval_secs));
         ticker.tick().await; // 最初のティックは即座に発火するためスキップ
 
@@ -35,7 +35,7 @@ pub async fn run_once(
         .map(|c| {
             let connector = Arc::clone(c);
             let store = store.clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 match connector.fetch().await {
                     Ok(items) => {
                         for item in items {
