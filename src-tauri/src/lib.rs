@@ -57,10 +57,11 @@ pub fn run() {
                 .rss
                 .as_ref()
                 .map(|rss| {
+                    let lookback = rss.lookback_days;
                     rss.feeds
                         .iter()
                         .map(|f| {
-                            Arc::new(RssConnector::new(f.clone()))
+                            Arc::new(RssConnector::new(f.clone(), lookback))
                                 as Arc<dyn connectors::Connector>
                         })
                         .collect()

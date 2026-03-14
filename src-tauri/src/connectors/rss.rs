@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use chrono::{Local, TimeZone};
+use chrono::{Duration, Local, TimeZone};
 use feed_rs::parser;
 
 use crate::config::FeedConfig;
@@ -8,13 +8,15 @@ use super::{Connector, ConnectorError};
 
 pub struct RssConnector {
     config: FeedConfig,
+    lookback_days: u32,
     client: reqwest::Client,
 }
 
 impl RssConnector {
-    pub fn new(config: FeedConfig) -> Self {
+    pub fn new(config: FeedConfig, lookback_days: u32) -> Self {
         Self {
             config,
+            lookback_days,
             client: reqwest::Client::new(),
         }
     }
@@ -39,6 +41,7 @@ impl Connector for RssConnector {
             .map_err(|e| ConnectorError::Parse(e.to_string()))?;
 
         let today = Local::now().date_naive();
+        let cutoff = today - Duration::days(self.lookback_days as i64);
 
         let items = feed
             .entries
@@ -50,8 +53,8 @@ impl Connector for RssConnector {
                     .map(|dt| Local.from_utc_datetime(&dt.naive_utc()))
                     .unwrap_or_else(Local::now);
 
-                // 当日分のみ
-                if published_at.date_naive() != today {
+                // 当日 + 直近 lookback_days 日分のみ
+                if published_at.date_naive() < cutoff {
                     return None;
                 }
 

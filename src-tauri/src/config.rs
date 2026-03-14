@@ -38,7 +38,14 @@ pub struct SourcesConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RssSourceConfig {
     pub poll_interval_secs: u64,
+    /// 当日を含む過去 N 日分を表示対象とする (0 = 当日のみ)
+    #[serde(default = "default_lookback_days")]
+    pub lookback_days: u32,
     pub feeds: Vec<FeedConfig>,
+}
+
+fn default_lookback_days() -> u32 {
+    3
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

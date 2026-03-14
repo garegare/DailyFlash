@@ -10,6 +10,7 @@ default_capacity = 50
 
 [sources.rss]
 poll_interval_secs = 300
+lookback_days = 3  # 当日を含む過去 N 日分を表示 (0 = 当日のみ)
 
 [[sources.rss.feeds]]
 id = "hacker-news"
