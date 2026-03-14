@@ -1,0 +1,30 @@
+[server]
+port = 8080
+auth_token = "your-secret-token-here"
+
+[memory]
+default_capacity = 50
+# ソース個別のオーバーライド (未実装・将来対応)
+# [memory.overrides]
+# "my-ci" = 100
+
+[sources.rss]
+poll_interval_secs = 300
+
+[[sources.rss.feeds]]
+id = "hacker-news"
+name = "Hacker News"
+url = "https://news.ycombinator.com/rss"
+icon = "hn"
+
+[[sources.rss.feeds]]
+id = "rust-blog"
+name = "Rust Blog"
+url = "https://blog.rust-lang.org/feed.xml"
+icon = "rust"
+
+[windows]
+startup = false
+notifications = true
+tray_icon = true
+start_hidden = false

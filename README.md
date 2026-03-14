@@ -151,7 +151,7 @@ DailyFlash/
 │           ├── mod.rs            # Connector トレイト定義
 │           ├── rss.rs            # RSS/Atom コネクタ実装
 │           └── github.rs         # (予定) GitHub コネクタ
-├── Config.toml                   # (予定) ユーザー設定ファイル
+├── Config.toml.example           # 設定ファイルのサンプル (Config.toml は .gitignore 済み)
 ├── .gitignore
 └── README.md
 ```
