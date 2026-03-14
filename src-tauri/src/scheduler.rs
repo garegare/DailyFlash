@@ -14,9 +14,11 @@ pub fn start(
     interval_secs: u64,
 ) {
     tauri::async_runtime::spawn(async move {
+        // 起動直後に即時取得
+        run_once(&app, &store, &connectors).await;
+
         let mut ticker = time::interval(Duration::from_secs(interval_secs));
         ticker.tick().await; // 最初のティックは即座に発火するためスキップ
-
         loop {
             ticker.tick().await;
             run_once(&app, &store, &connectors).await;
