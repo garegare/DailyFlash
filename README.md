@@ -141,16 +141,16 @@ DailyFlash/
 │   │   └── 512x512.png
 │   └── src/
 │       ├── main.rs               # エントリポイント
-│       ├── lib.rs                # Tauri ランナー・コマンド定義 (予定)
-│       ├── config.rs             # (予定) Config.toml 読み込みと構造体定義
-│       ├── store.rs              # (予定) DashStore: RwLock + RingBuffer 実装
-│       ├── scheduler.rs          # (予定) Pull 定期実行スケジューラ
-│       ├── server.rs             # (予定) axum Push 受信サーバー
-│       ├── error.rs              # (予定) 統一エラー型定義
-│       └── connectors/           # (予定)
+│       ├── lib.rs                # Tauri ランナー・コマンド定義・setup
+│       ├── config.rs             # Config.toml 読み込みと構造体定義
+│       ├── store.rs              # DashStore: RwLock + RingBuffer 実装
+│       ├── scheduler.rs          # Pull 定期実行スケジューラ
+│       ├── server.rs             # axum Push 受信サーバー
+│       ├── error.rs              # 統一エラー型定義
+│       └── connectors/
 │           ├── mod.rs            # Connector トレイト定義
 │           ├── rss.rs            # RSS/Atom コネクタ実装
-│           └── github.rs         # GitHub コネクタ
+│           └── github.rs         # (予定) GitHub コネクタ
 ├── Config.toml                   # (予定) ユーザー設定ファイル
 ├── .gitignore
 └── README.md
