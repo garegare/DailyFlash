@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useDashboard } from "../hooks/useDashboard";
 import { ItemCard } from "./ItemCard";
 import { SourceFilter } from "./SourceFilter";
@@ -7,6 +8,7 @@ export function Dashboard() {
   const { items, loading, error, refresh, clearStore, highlightKeywords } = useDashboard();
   const [activeSource, setActiveSource] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
 
   const sources = useMemo(
     () => [...new Set(items.map((i) => i.source_name))].sort(),
@@ -26,12 +28,36 @@ export function Dashboard() {
     });
   }, [items, activeSource, query]);
 
+  // カード削除時に即座に反映（次の refresh まで待たずに state を更新）
+  const handleDelete = useCallback(
+    (deletedId: string) => {
+      // useDashboard の state を直接操作できないため refresh で再取得
+      refresh();
+      void deletedId; // lint 回避
+    },
+    [refresh],
+  );
+
+  const handleExport = useCallback(async () => {
+    try {
+      const path = await invoke<string>("export_items");
+      setExportMsg(`保存: ${path}`);
+      setTimeout(() => setExportMsg(null), 3000);
+    } catch (e) {
+      setExportMsg(`エクスポート失敗: ${e}`);
+      setTimeout(() => setExportMsg(null), 3000);
+    }
+  }, []);
+
   return (
     <div className="dashboard">
       <header className="dashboard-header">
         <h1 className="dashboard-title">⚡ DailyFlash</h1>
         <div className="header-actions">
           <span className="item-count">{filtered.length} 件</span>
+          <button className="btn-icon" onClick={handleExport} title="JSON エクスポート">
+            ↓
+          </button>
           <button className="btn-icon" onClick={refresh} title="更新">
             ↻
           </button>
@@ -40,6 +66,8 @@ export function Dashboard() {
           </button>
         </div>
       </header>
+
+      {exportMsg && <div className="export-toast">{exportMsg}</div>}
 
       <div className="search-bar">
         <span className="search-icon">🔍</span>
@@ -72,7 +100,12 @@ export function Dashboard() {
           <p className="state-msg">今日のアイテムはまだありません</p>
         )}
         {filtered.map((item) => (
-          <ItemCard key={item.id} item={item} highlightKeywords={highlightKeywords} />
+          <ItemCard
+            key={item.id}
+            item={item}
+            highlightKeywords={highlightKeywords}
+            onDelete={handleDelete}
+          />
         ))}
       </main>
     </div>

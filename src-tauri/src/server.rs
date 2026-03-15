@@ -48,6 +48,7 @@ pub fn start(app: AppHandle, store: DashStore, port: u16, auth_token: String) {
 
     let router = Router::new()
         .route("/health", get(health))
+        .route("/items", get(get_items_handler))
         .route("/push", post(push_handler))
         .with_state(Arc::new(state));
 
@@ -64,6 +65,26 @@ pub fn start(app: AppHandle, store: DashStore, port: u16, auth_token: String) {
 
 async fn health() -> &'static str {
     "ok"
+}
+
+/// GET /items — 現在のダッシュボードアイテムを JSON で返す
+async fn get_items_handler(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    // Bearer トークン検証
+    let auth = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let expected = format!("Bearer {}", state.auth_token);
+    if auth != expected {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let items = state.store.all_items().await;
+    let count = items.len();
+    Ok(Json(serde_json::json!({ "count": count, "items": items })))
 }
 
 async fn push_handler(

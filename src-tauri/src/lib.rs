@@ -34,6 +34,85 @@ async fn clear_store(store: tauri::State<'_, DashStore>) -> Result<(), error::Ap
     Ok(())
 }
 
+/// アイテムをストアから削除する
+#[tauri::command]
+async fn delete_item(
+    store: tauri::State<'_, DashStore>,
+    id: String,
+) -> Result<(), error::AppError> {
+    store.remove_item(&id).await;
+    Ok(())
+}
+
+/// アイテムをローカル JSON ファイルにブックマーク保存する
+#[tauri::command]
+async fn bookmark_item(
+    app: tauri::AppHandle,
+    store: tauri::State<'_, DashStore>,
+    id: String,
+) -> Result<String, error::AppError> {
+    use tauri::Manager;
+
+    // ストアから対象アイテムを探す
+    let items = store.all_items().await;
+    let item = items
+        .into_iter()
+        .find(|i| i.id == id)
+        .ok_or_else(|| error::AppError::Validation("Item not found".to_string()))?;
+
+    // 保存先: {app_config_dir}/bookmarks.json
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| error::AppError::Validation(e.to_string()))?;
+    std::fs::create_dir_all(&config_dir)?;
+    let bookmarks_path = config_dir.join("bookmarks.json");
+
+    // 既存のブックマークを読み込む
+    let mut bookmarks: Vec<DashItem> = if bookmarks_path.exists() {
+        let content = std::fs::read_to_string(&bookmarks_path)?;
+        serde_json::from_str(&content).unwrap_or_default()
+    } else {
+        vec![]
+    };
+
+    // 重複チェック（同じ ID は追加しない）
+    if !bookmarks.iter().any(|b| b.id == item.id) {
+        bookmarks.push(item);
+        let json = serde_json::to_string_pretty(&bookmarks)
+            .map_err(|e| error::AppError::Validation(e.to_string()))?;
+        std::fs::write(&bookmarks_path, json)?;
+    }
+
+    Ok(bookmarks_path.to_string_lossy().to_string())
+}
+
+/// 現在のダッシュボードアイテムを JSON ファイルにエクスポートする
+#[tauri::command]
+async fn export_items(
+    app: tauri::AppHandle,
+    store: tauri::State<'_, DashStore>,
+) -> Result<String, error::AppError> {
+    use tauri::Manager;
+    use chrono::Local;
+
+    let items = store.all_items().await;
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S");
+
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| error::AppError::Validation(e.to_string()))?;
+    std::fs::create_dir_all(&config_dir)?;
+    let export_path = config_dir.join(format!("export_{timestamp}.json"));
+
+    let json = serde_json::to_string_pretty(&items)
+        .map_err(|e| error::AppError::Validation(e.to_string()))?;
+    std::fs::write(&export_path, json)?;
+
+    Ok(export_path.to_string_lossy().to_string())
+}
+
 // ---- エントリポイント ----
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -48,7 +127,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             refresh_dashboard,
             get_config,
-            clear_store
+            clear_store,
+            delete_item,
+            bookmark_item,
+            export_items,
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();

@@ -53,6 +53,14 @@ impl RingBuffer {
         self.items.iter().cloned().collect()
     }
 
+    /// 指定 ID のアイテムを削除。存在しない場合は何もしない。
+    fn remove(&mut self, id: &str) {
+        if let Some(pos) = self.items.iter().position(|i| i.id == id) {
+            let item = self.items.remove(pos).unwrap();
+            self.seen.remove(&(item.source_id, item.id));
+        }
+    }
+
     fn clear(&mut self) {
         self.items.clear();
         self.seen.clear();
@@ -82,6 +90,11 @@ impl DashStore {
         let mut items = self.inner.read().await.items();
         items.sort_by(|a, b| b.published_at.cmp(&a.published_at));
         items
+    }
+
+    /// 指定 ID のアイテムをストアから削除する
+    pub async fn remove_item(&self, id: &str) {
+        self.inner.write().await.remove(id);
     }
 
     pub async fn clear(&self) {
