@@ -5,6 +5,11 @@ auth_token = "your-secret-token-here"
 [memory]
 default_capacity = 50
 
+# ストレージ設定
+# [storage]
+# bookmarks_path = "~/Documents/dailyflash_bookmarks.json"  # ブックマーク保存先（~ 展開対応）
+# 未設定時は ~/Library/Application Support/com.dailyflash.app/bookmarks.json
+
 # ハイライト表示するキーワード（タイトル・説明文・タグを検索、大文字小文字無視）
 [display]
 highlight_keywords = ["Claude", "Rust", "React"]
@@ -31,6 +36,13 @@ id = "qiita"
 name = "Qiita"
 url = "https://qiita.com/popular-items/feed.atom"
 icon = "qiita"
+
+# クリップボード監視（デフォルト有効・3秒間隔・4文字以上で検知）
+# [sources.clipboard]
+# enabled = true
+# poll_interval_secs = 3
+# min_chars = 4
+# max_items = 10  # ダッシュボードに保持するクリップボードカードの最大枚数
 
 # GitHub コネクタ（Personal Access Token が必要）
 # [sources.github]

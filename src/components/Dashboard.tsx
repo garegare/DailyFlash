@@ -1,22 +1,35 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useDashboard } from "../hooks/useDashboard";
 import { ItemCard } from "./ItemCard";
-import { SourceFilter } from "./SourceFilter";
+import { SourceFilter, BOOKMARK_FILTER } from "./SourceFilter";
 
 export function Dashboard() {
   const { items, loading, error, refresh, clearStore, highlightKeywords } = useDashboard();
   const [activeSource, setActiveSource] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
 
+  // Bookmark (source_id === "bookmark") はアーカイブ扱いなので動的ソース一覧から除外
   const sources = useMemo(
-    () => [...new Set(items.map((i) => i.source_name))].sort(),
+    () =>
+      [...new Set(
+        items.filter((i) => i.source_id !== "bookmark").map((i) => i.source_name),
+      )].sort(),
     [items],
   );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter((i) => {
-      if (activeSource && i.source_name !== activeSource) return false;
+      if (activeSource === BOOKMARK_FILTER) {
+        // Bookmark タブ: アーカイブ済み (source_id=bookmark) + 今セッションで⭐したもの
+        if (i.source_id !== "bookmark" && !i.tags.includes("bookmark")) return false;
+      } else {
+        // すべて / ソース別: アーカイブ済みブックマーク（起動時読み込み分）のみ除外
+        if (i.source_id === "bookmark") return false;
+        if (activeSource && i.source_name !== activeSource) return false;
+      }
       if (!q) return true;
       return (
         i.title.toLowerCase().includes(q) ||
@@ -26,12 +39,36 @@ export function Dashboard() {
     });
   }, [items, activeSource, query]);
 
+  // カード削除時に即座に反映（次の refresh まで待たずに state を更新）
+  const handleDelete = useCallback(
+    (deletedId: string) => {
+      // useDashboard の state を直接操作できないため refresh で再取得
+      refresh();
+      void deletedId; // lint 回避
+    },
+    [refresh],
+  );
+
+  const handleExport = useCallback(async () => {
+    try {
+      const path = await invoke<string>("export_items");
+      setExportMsg(`保存: ${path}`);
+      setTimeout(() => setExportMsg(null), 3000);
+    } catch (e) {
+      setExportMsg(`エクスポート失敗: ${e}`);
+      setTimeout(() => setExportMsg(null), 3000);
+    }
+  }, []);
+
   return (
     <div className="dashboard">
       <header className="dashboard-header">
         <h1 className="dashboard-title">⚡ DailyFlash</h1>
         <div className="header-actions">
           <span className="item-count">{filtered.length} 件</span>
+          <button className="btn-icon" onClick={handleExport} title="JSON エクスポート">
+            ↓
+          </button>
           <button className="btn-icon" onClick={refresh} title="更新">
             ↻
           </button>
@@ -40,6 +77,8 @@ export function Dashboard() {
           </button>
         </div>
       </header>
+
+      {exportMsg && <div className="export-toast">{exportMsg}</div>}
 
       <div className="search-bar">
         <span className="search-icon">🔍</span>
@@ -72,7 +111,12 @@ export function Dashboard() {
           <p className="state-msg">今日のアイテムはまだありません</p>
         )}
         {filtered.map((item) => (
-          <ItemCard key={item.id} item={item} highlightKeywords={highlightKeywords} />
+          <ItemCard
+            key={item.id}
+            item={item}
+            highlightKeywords={highlightKeywords}
+            onDelete={handleDelete}
+          />
         ))}
       </main>
     </div>

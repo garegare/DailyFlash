@@ -161,6 +161,7 @@ impl Connector for GithubConnector {
                     title,
                     body: None,
                     url: Some(url),
+                    image_data: None,
                     published_at,
                     tags,
                 })

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+mod clipboard_monitor;
 mod config;
 mod connectors;
 mod error;
@@ -34,6 +35,172 @@ async fn clear_store(store: tauri::State<'_, DashStore>) -> Result<(), error::Ap
     Ok(())
 }
 
+/// アイテムをストアから削除する
+#[tauri::command]
+async fn delete_item(
+    store: tauri::State<'_, DashStore>,
+    id: String,
+) -> Result<(), error::AppError> {
+    store.remove_item(&id).await;
+    Ok(())
+}
+
+/// ~ をホームディレクトリに展開する
+fn expand_tilde(path: &str) -> std::path::PathBuf {
+    if let Some(rest) = path.strip_prefix("~/") {
+        if let Some(home) = dirs_next::home_dir() {
+            return home.join(rest);
+        }
+    }
+    std::path::PathBuf::from(path)
+}
+
+/// bookmarks.json のパスを解決する（Config 指定優先、なければ fallback_dir/bookmarks.json）
+fn resolve_bookmarks_path(
+    storage: &config::StorageConfig,
+    fallback_dir: Option<std::path::PathBuf>,
+) -> Option<std::path::PathBuf> {
+    if let Some(ref configured) = storage.bookmarks_path {
+        Some(expand_tilde(configured))
+    } else {
+        fallback_dir.map(|d| d.join("bookmarks.json"))
+    }
+}
+
+/// bookmarks.json を読み込んで DashItem のリストを返す
+fn load_bookmarks(path: &std::path::Path) -> Vec<DashItem> {
+    if !path.exists() {
+        return vec![];
+    }
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[bookmark] read error: {e}");
+            return vec![];
+        }
+    };
+    serde_json::from_str(&content).unwrap_or_default()
+}
+
+/// アイテムをローカル JSON ファイルにブックマーク保存する
+#[tauri::command]
+async fn bookmark_item(
+    app: tauri::AppHandle,
+    config: tauri::State<'_, Config>,
+    store: tauri::State<'_, DashStore>,
+    id: String,
+) -> Result<String, error::AppError> {
+    use tauri::{Emitter, Manager};
+
+    // ストアから対象アイテムを探す
+    let items = store.all_items().await;
+    let mut item = items
+        .into_iter()
+        .find(|i| i.id == id)
+        .ok_or_else(|| error::AppError::Validation("Item not found".to_string()))?;
+
+    // "bookmark" タグを付与（まだなければ）
+    if !item.tags.contains(&"bookmark".to_string()) {
+        item.tags.push("bookmark".to_string());
+    }
+
+    // 保存先パスを解決
+    let fallback_dir = app.path().app_config_dir().ok();
+    let bookmarks_path = resolve_bookmarks_path(&config.storage, fallback_dir)
+        .ok_or_else(|| error::AppError::Validation("bookmarks path unavailable".to_string()))?;
+    if let Some(parent) = bookmarks_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    // 既存のブックマークを読み込む
+    let mut bookmarks: Vec<DashItem> = if bookmarks_path.exists() {
+        let content = std::fs::read_to_string(&bookmarks_path)?;
+        serde_json::from_str(&content).unwrap_or_default()
+    } else {
+        vec![]
+    };
+
+    // 重複チェック（同じ ID は上書き保存）
+    bookmarks.retain(|b| b.id != item.id);
+    bookmarks.push(item.clone());
+    let json = serde_json::to_string_pretty(&bookmarks)
+        .map_err(|e| error::AppError::Validation(e.to_string()))?;
+    std::fs::write(&bookmarks_path, json)?;
+
+    // ストアの既存アイテムを bookmark タグ付きで置き換えてダッシュボードを更新
+    store.remove_item(&item.id).await;
+    store.push(item).await;
+    let _ = app.emit("dashboard_updated", ());
+
+    Ok(bookmarks_path.to_string_lossy().to_string())
+}
+
+/// ブックマークを解除する（bookmarks.json から削除し、ストアのタグも外す）
+#[tauri::command]
+async fn unbookmark_item(
+    app: tauri::AppHandle,
+    config: tauri::State<'_, Config>,
+    store: tauri::State<'_, DashStore>,
+    id: String,
+) -> Result<(), error::AppError> {
+    use tauri::{Emitter, Manager};
+
+    // bookmarks.json から該当アイテムを削除
+    let fallback_dir = app.path().app_config_dir().ok();
+    if let Some(bm_path) = resolve_bookmarks_path(&config.storage, fallback_dir) {
+        if bm_path.exists() {
+            let content = std::fs::read_to_string(&bm_path)?;
+            let mut bookmarks: Vec<DashItem> = serde_json::from_str(&content).unwrap_or_default();
+            bookmarks.retain(|b| b.id != id);
+            let json = serde_json::to_string_pretty(&bookmarks)
+                .map_err(|e| error::AppError::Validation(e.to_string()))?;
+            std::fs::write(&bm_path, json)?;
+        }
+    }
+
+    // ストアから対象アイテムを探す
+    let items = store.all_items().await;
+    if let Some(item) = items.into_iter().find(|i| i.id == id) {
+        store.remove_item(&id).await;
+        if item.source_id != "bookmark" {
+            // 通常ソースのアイテム: bookmark タグを外してストアに戻す
+            let mut updated = item;
+            updated.tags.retain(|t| t != "bookmark");
+            store.push(updated).await;
+        }
+        // source_id == "bookmark" のアーカイブ済みアイテムはストアから削除のみ
+    }
+
+    let _ = app.emit("dashboard_updated", ());
+    Ok(())
+}
+
+/// 現在のダッシュボードアイテムを JSON ファイルにエクスポートする
+#[tauri::command]
+async fn export_items(
+    app: tauri::AppHandle,
+    store: tauri::State<'_, DashStore>,
+) -> Result<String, error::AppError> {
+    use tauri::Manager;
+    use chrono::Local;
+
+    let items = store.all_items().await;
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S");
+
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| error::AppError::Validation(e.to_string()))?;
+    std::fs::create_dir_all(&config_dir)?;
+    let export_path = config_dir.join(format!("export_{timestamp}.json"));
+
+    let json = serde_json::to_string_pretty(&items)
+        .map_err(|e| error::AppError::Validation(e.to_string()))?;
+    std::fs::write(&export_path, json)?;
+
+    Ok(export_path.to_string_lossy().to_string())
+}
+
 // ---- エントリポイント ----
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -43,12 +210,17 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(config.clone())
         .manage(store.clone())
         .invoke_handler(tauri::generate_handler![
             refresh_dashboard,
             get_config,
-            clear_store
+            clear_store,
+            delete_item,
+            bookmark_item,
+            unbookmark_item,
+            export_items,
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();
@@ -90,10 +262,38 @@ pub fn run() {
             // Push サーバー起動
             server::start(
                 app_handle.clone(),
-                store,
+                store.clone(),
                 config.server.port,
                 config.server.auth_token.clone(),
             );
+
+            // ブックマークを起動時にストアへ読み込む
+            use tauri::Manager;
+            let fallback_dir = app.path().app_config_dir().ok();
+            if let Some(bm_path) = resolve_bookmarks_path(&config.storage, fallback_dir) {
+                let bookmarks = load_bookmarks(&bm_path);
+                let count = bookmarks.len();
+                let rt = tauri::async_runtime::handle();
+                for mut item in bookmarks {
+                    // ソースを "bookmark" に統一（「すべて」フィルタから除外するため）
+                    item.source_id = "bookmark".to_string();
+                    item.source_name = "Bookmark".to_string();
+                    if !item.tags.contains(&"bookmark".to_string()) {
+                        item.tags.push("bookmark".to_string());
+                    }
+                    let s = store.clone();
+                    rt.block_on(async move { s.push(item).await; });
+                }
+                eprintln!("[bookmark] loaded {count} bookmarks from {}", bm_path.display());
+            }
+
+            // クリップボード監視起動
+            let clipboard_cfg = config
+                .sources
+                .clipboard
+                .clone()
+                .unwrap_or_default();
+            clipboard_monitor::start(app_handle.clone(), store, clipboard_cfg);
 
             // ---- タスクトレイ設定 ----
             setup_tray(app)?;

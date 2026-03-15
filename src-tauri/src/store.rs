@@ -13,6 +13,9 @@ pub struct DashItem {
     pub title: String,
     pub body: Option<String>,
     pub url: Option<String>,
+    /// クリップボード画像などの base64 PNG data URL（例: "data:image/png;base64,..."）
+    #[serde(default)]
+    pub image_data: Option<String>,
     pub published_at: DateTime<Local>,
     pub tags: Vec<String>,
 }
@@ -53,6 +56,14 @@ impl RingBuffer {
         self.items.iter().cloned().collect()
     }
 
+    /// 指定 ID のアイテムを削除。存在しない場合は何もしない。
+    fn remove(&mut self, id: &str) {
+        if let Some(pos) = self.items.iter().position(|i| i.id == id) {
+            let item = self.items.remove(pos).unwrap();
+            self.seen.remove(&(item.source_id, item.id));
+        }
+    }
+
     fn clear(&mut self) {
         self.items.clear();
         self.seen.clear();
@@ -82,6 +93,51 @@ impl DashStore {
         let mut items = self.inner.read().await.items();
         items.sort_by(|a, b| b.published_at.cmp(&a.published_at));
         items
+    }
+
+    /// 指定 ID のアイテムをストアから削除する
+    pub async fn remove_item(&self, id: &str) {
+        self.inner.write().await.remove(id);
+    }
+
+    /// クリップボード専用の push。
+    /// - 同じタイトル（＝同じコピー内容）の既存クリップボードカードを先に削除する
+    /// - クリップボードカードが max_items 以上あれば古い順に削除する
+    /// - その後に新アイテムを追加する
+    pub async fn push_clipboard(&self, item: DashItem, max_items: usize) {
+        let mut buf = self.inner.write().await;
+
+        // 同内容（タイトル一致）の古いクリップボードカードを削除
+        let same_title_ids: Vec<String> = buf
+            .items
+            .iter()
+            .filter(|i| i.source_id == "clipboard" && i.title == item.title)
+            .map(|i| i.id.clone())
+            .collect();
+        for id in &same_title_ids {
+            buf.remove(id);
+        }
+
+        // クリップボードカードが max_items 以上なら古い順に削除
+        loop {
+            let clipboard_count = buf.items.iter().filter(|i| i.source_id == "clipboard").count();
+            if clipboard_count < max_items {
+                break;
+            }
+            // 最古のクリップボードカードを探して削除
+            let oldest_id = buf
+                .items
+                .iter()
+                .find(|i| i.source_id == "clipboard")
+                .map(|i| i.id.clone());
+            if let Some(id) = oldest_id {
+                buf.remove(&id);
+            } else {
+                break;
+            }
+        }
+
+        buf.push(item);
     }
 
     pub async fn clear(&self) {

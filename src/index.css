@@ -151,6 +151,22 @@ body {
   color: #93c5fd;
 }
 
+.filter-chip--bookmark {
+  border-color: #92400e;
+  color: #d97706;
+}
+
+.filter-chip--bookmark:hover {
+  border-color: #b45309;
+  color: #fbbf24;
+}
+
+.filter-chip--bookmark.active {
+  background: #2d1f00;
+  border-color: #b45309;
+  color: #fbbf24;
+}
+
 /* ---- Item List ---- */
 .item-list {
   flex: 1;
@@ -201,6 +217,72 @@ body {
   color: #fbbf24;
   font-style: normal;
   padding: 0 2px;
+}
+
+/* ---- Item Actions (hover) ---- */
+.item-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.item-card:hover .item-actions {
+  opacity: 1;
+}
+
+.action-btn {
+  background: none;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  color: #a0a0a0;
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 3px 5px;
+  transition: background 0.1s, color 0.1s;
+}
+
+.action-btn:hover {
+  background: #2a2a2a;
+  color: #e0e0e0;
+}
+
+.action-btn--danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: #ef4444;
+  color: #f87171;
+}
+
+.action-btn--done {
+  border-color: #22c55e;
+  color: #22c55e;
+}
+
+/* カード内トースト通知 */
+.item-toast {
+  background: #1e1e1e;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  color: #a0a0a0;
+  font-size: 0.7rem;
+  margin-bottom: 6px;
+  padding: 4px 8px;
+}
+
+/* ヘッダーのエクスポートトースト */
+.export-toast {
+  background: #1a2a1a;
+  border: 1px solid #166534;
+  border-radius: 6px;
+  color: #86efac;
+  font-size: 0.75rem;
+  margin: 0 12px 8px;
+  overflow: hidden;
+  padding: 6px 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .item-meta {
@@ -265,4 +347,32 @@ body {
   color: #666;
   font-size: 0.65rem;
   padding: 1px 6px;
+}
+
+.tag--bookmark {
+  background: #2d1f00;
+  border-color: #92400e;
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+/* ---- Clipboard Image ---- */
+.item-image-wrap {
+  margin: 8px 0 4px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  /* 大きすぎる画像をカード幅に収める */
+  max-width: 100%;
+  line-height: 0;
+}
+
+.item-image {
+  display: block;
+  max-width: 100%;
+  /* 縦に長すぎる画像は 320px でクリップ */
+  max-height: 320px;
+  object-fit: contain;
+  cursor: zoom-in;
 }

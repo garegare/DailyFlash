@@ -1,9 +1,12 @@
+import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { DashItem } from "../hooks/useDashboard";
 
 interface Props {
   item: DashItem;
   highlightKeywords?: string[];
+  onDelete?: (id: string) => void;
 }
 
 /** テキスト中のキーワードを <mark> でハイライトして ReactNode 配列に変換 */
@@ -21,7 +24,12 @@ function highlightText(text: string, keywords: string[]): React.ReactNode {
   );
 }
 
-export function ItemCard({ item, highlightKeywords = [] }: Props) {
+export function ItemCard({ item, highlightKeywords = [], onDelete }: Props) {
+  const [copied, setCopied] = useState(false);
+  const [bookmarked, setBookmarked] = useState(false);
+  const isBookmarked = bookmarked || item.tags.includes("bookmark");
+  const [toast, setToast] = useState<string | null>(null);
+
   const dt = new Date(item.published_at);
   const time = dt.toLocaleDateString("ja-JP", {
     year: "numeric",
@@ -32,7 +40,7 @@ export function ItemCard({ item, highlightKeywords = [] }: Props) {
     minute: "2-digit",
   });
 
-  // カード全体をハイライト対象かどうか判定（左ボーダー強調用）
+  // カードのキーワードハイライト判定
   const kw = highlightKeywords.map((k) => k.toLowerCase());
   const isHighlighted =
     kw.length > 0 &&
@@ -40,28 +48,110 @@ export function ItemCard({ item, highlightKeywords = [] }: Props) {
       (item.body ? kw.some((k) => item.body!.toLowerCase().includes(k)) : false) ||
       item.tags.some((t) => kw.some((k) => t.toLowerCase().includes(k))));
 
-  const handleClick = (e: React.MouseEvent) => {
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2000);
+  };
+
+  const handleOpen = (e: React.MouseEvent) => {
     if (item.url) {
       e.preventDefault();
       openUrl(item.url);
     }
   };
 
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!item.url) return;
+    try {
+      await navigator.clipboard.writeText(item.url);
+      setCopied(true);
+      showToast("URLをコピーしました");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      showToast("コピー失敗");
+    }
+  };
+
+  const handleBookmark = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await invoke<string>("bookmark_item", { id: item.id });
+      setBookmarked(true);
+    } catch (err) {
+      showToast(`ブックマーク失敗: ${err}`);
+    }
+  };
+
+  // ブックマーク解除（bookmarks.json から削除、タグを外す）
+  const handleUnbookmark = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await invoke("unbookmark_item", { id: item.id });
+      setBookmarked(false);
+      onDelete?.(item.id);
+    } catch (err) {
+      showToast(`削除失敗: ${err}`);
+    }
+  };
+
   return (
     <article className={`item-card${isHighlighted ? " item-card--highlighted" : ""}`}>
+      {toast && <div className="item-toast">{toast}</div>}
+
       <div className="item-meta">
         <span className="source-name">{item.source_name}</span>
         <span className="item-time">{time}</span>
+        {/* ホバー時に表示されるアクションボタン */}
+        <div className="item-actions">
+          {item.url && (
+            <button
+              className={`action-btn${copied ? " action-btn--done" : ""}`}
+              onClick={handleCopy}
+              title="URLをコピー"
+            >
+              {copied ? "✓" : "📋"}
+            </button>
+          )}
+          {!isBookmarked && (
+            <button
+              className="action-btn"
+              onClick={handleBookmark}
+              title="JSONファイルにブックマーク"
+            >
+              ⭐
+            </button>
+          )}
+          {isBookmarked && (
+            <button
+              className="action-btn action-btn--danger"
+              onClick={handleUnbookmark}
+              title="ブックマークから削除"
+            >
+              🗑️
+            </button>
+          )}
+        </div>
       </div>
+
       <h3 className="item-title">
         {item.url ? (
-          <a href={item.url} onClick={handleClick}>
+          <a href={item.url} onClick={handleOpen}>
             {highlightText(item.title, highlightKeywords)}
           </a>
         ) : (
           highlightText(item.title, highlightKeywords)
         )}
       </h3>
+      {item.image_data && (
+        <div className="item-image-wrap">
+          <img
+            src={item.image_data}
+            alt="クリップボード画像"
+            className="item-image"
+          />
+        </div>
+      )}
       {item.body && (
         <p className="item-body">
           {highlightText(item.body, highlightKeywords)}
@@ -70,8 +160,11 @@ export function ItemCard({ item, highlightKeywords = [] }: Props) {
       {item.tags.length > 0 && (
         <div className="item-tags">
           {item.tags.map((tag) => (
-            <span key={tag} className="tag">
-              {tag}
+            <span
+              key={tag}
+              className={`tag${tag === "bookmark" ? " tag--bookmark" : ""}`}
+            >
+              {tag === "bookmark" ? "⭐ bookmark" : tag}
             </span>
           ))}
         </div>

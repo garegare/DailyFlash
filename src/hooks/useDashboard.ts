@@ -9,6 +9,8 @@ export interface DashItem {
   title: string;
   body: string | null;
   url: string | null;
+  /** クリップボード画像などの base64 PNG data URL */
+  image_data: string | null;
   published_at: string;
   tags: string[];
 }

@@ -72,6 +72,7 @@ impl Connector for RssConnector {
                     title,
                     body,
                     url,
+                    image_data: None,
                     published_at,
                     tags: vec![],
                 })

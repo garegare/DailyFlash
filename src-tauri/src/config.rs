@@ -8,6 +8,8 @@ pub struct Config {
     #[serde(default)]
     pub display: DisplayConfig,
     #[serde(default)]
+    pub storage: StorageConfig,
+    #[serde(default)]
     pub sources: SourcesConfig,
     #[serde(default)]
     pub windows: WindowsConfig,
@@ -32,6 +34,15 @@ impl Default for MemoryConfig {
     }
 }
 
+/// ストレージ設定
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StorageConfig {
+    /// ブックマーク保存先 JSON ファイルのパス。
+    /// 未設定時は {app_config_dir}/bookmarks.json を使用する。
+    /// ~ はホームディレクトリに展開される。
+    pub bookmarks_path: Option<String>,
+}
+
 /// 表示設定
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DisplayConfig {
@@ -40,10 +51,44 @@ pub struct DisplayConfig {
     pub highlight_keywords: Vec<String>,
 }
 
+/// クリップボード監視設定
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClipboardSourceConfig {
+    /// 監視を有効にする
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// クリップボードをポーリングする間隔（秒）
+    #[serde(default = "default_clipboard_interval")]
+    pub poll_interval_secs: u64,
+    /// 最小文字数（これ未満のテキストは無視）
+    #[serde(default = "default_min_chars")]
+    pub min_chars: usize,
+    /// ダッシュボードに保持するクリップボードカードの最大枚数
+    #[serde(default = "default_clipboard_max_items")]
+    pub max_items: usize,
+}
+
+fn default_true() -> bool { true }
+fn default_clipboard_interval() -> u64 { 3 }
+fn default_min_chars() -> usize { 4 }
+fn default_clipboard_max_items() -> usize { 10 }
+
+impl Default for ClipboardSourceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            poll_interval_secs: 3,
+            min_chars: 4,
+            max_items: 10,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SourcesConfig {
     pub rss: Option<RssSourceConfig>,
     pub github: Option<GithubSourceConfig>,
+    pub clipboard: Option<ClipboardSourceConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,6 +195,7 @@ impl Config {
             },
             memory: MemoryConfig::default(),
             display: DisplayConfig::default(),
+            storage: StorageConfig::default(),
             sources: SourcesConfig::default(),
             windows: WindowsConfig::default(),
         }
