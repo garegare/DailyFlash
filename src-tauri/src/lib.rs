@@ -135,6 +135,85 @@ async fn bookmark_item(
     Ok(bookmarks_path.to_string_lossy().to_string())
 }
 
+/// メモアイテムをストアに追加する
+#[tauri::command]
+async fn add_note(
+    app: tauri::AppHandle,
+    store: tauri::State<'_, DashStore>,
+    text: String,
+) -> Result<(), error::AppError> {
+    use tauri::Emitter;
+    use chrono::Local;
+
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err(error::AppError::Validation("テキストが空です".to_string()));
+    }
+
+    // 1行目をタイトルに、全文を body に保存（編集時に全文を使う）
+    let first_line: String = text.lines().next().unwrap_or("").chars().take(80).collect();
+    let title = if first_line.is_empty() {
+        "メモ".to_string()
+    } else {
+        first_line
+    };
+
+    let id = format!("note-{}", uuid::Uuid::new_v4());
+    let item = DashItem {
+        id,
+        source_id: "note".to_string(),
+        source_name: "メモ".to_string(),
+        title,
+        body: Some(text),
+        url: None,
+        image_data: None,
+        published_at: Local::now(),
+        tags: vec!["note".to_string()],
+    };
+
+    store.push(item).await;
+    let _ = app.emit("dashboard_updated", ());
+    Ok(())
+}
+
+/// メモアイテムを編集する（テキストを更新し published_at は保持）
+#[tauri::command]
+async fn edit_note(
+    app: tauri::AppHandle,
+    store: tauri::State<'_, DashStore>,
+    id: String,
+    text: String,
+) -> Result<(), error::AppError> {
+    use tauri::Emitter;
+
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err(error::AppError::Validation("テキストが空です".to_string()));
+    }
+
+    let items = store.all_items().await;
+    let item = items
+        .into_iter()
+        .find(|i| i.id == id)
+        .ok_or_else(|| error::AppError::Validation("Note not found".to_string()))?;
+
+    let first_line: String = text.lines().next().unwrap_or("").chars().take(80).collect();
+    let title = if first_line.is_empty() {
+        "メモ".to_string()
+    } else {
+        first_line
+    };
+
+    let mut updated = item;
+    updated.title = title;
+    updated.body = Some(text);
+
+    store.remove_item(&id).await;
+    store.push(updated).await;
+    let _ = app.emit("dashboard_updated", ());
+    Ok(())
+}
+
 /// ブックマークを解除する（bookmarks.json から削除し、ストアのタグも外す）
 #[tauri::command]
 async fn unbookmark_item(
@@ -211,6 +290,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(config.clone())
         .manage(store.clone())
         .invoke_handler(tauri::generate_handler![
@@ -220,6 +300,8 @@ pub fn run() {
             delete_item,
             bookmark_item,
             unbookmark_item,
+            add_note,
+            edit_note,
             export_items,
         ])
         .setup(move |app| {
@@ -297,6 +379,26 @@ pub fn run() {
 
             // ---- タスクトレイ設定 ----
             setup_tray(app)?;
+
+            // ---- グローバルショートカット: Cmd+Shift+N でメモ入力を開く ----
+            {
+                use tauri::{Emitter, Manager};
+                use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+
+                let shortcut: Shortcut = "CommandOrControl+Shift+N".parse()
+                    .expect("invalid shortcut");
+                let handle = app.handle().clone();
+                app.handle().global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        // ウィンドウを前面に出してからメモ入力イベントを送信
+                        if let Some(window) = handle.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                        let _ = handle.emit("open_note_input", ());
+                    }
+                })?;
+            }
 
             Ok(())
         })

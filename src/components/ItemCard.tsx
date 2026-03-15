@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { DashItem } from "../hooks/useDashboard";
@@ -29,6 +29,19 @@ export function ItemCard({ item, highlightKeywords = [], onDelete }: Props) {
   const [bookmarked, setBookmarked] = useState(false);
   const isBookmarked = bookmarked || item.tags.includes("bookmark");
   const [toast, setToast] = useState<string | null>(null);
+  const isNote = item.source_id === "note";
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(item.body ?? item.title);
+  const editRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (editing) {
+      editRef.current?.focus();
+      // カーソルを末尾に
+      const len = editRef.current?.value.length ?? 0;
+      editRef.current?.setSelectionRange(len, len);
+    }
+  }, [editing]);
 
   const dt = new Date(item.published_at);
   const time = dt.toLocaleDateString("ja-JP", {
@@ -83,6 +96,26 @@ export function ItemCard({ item, highlightKeywords = [], onDelete }: Props) {
     }
   };
 
+  const handleEditSave = async () => {
+    if (!editText.trim()) return;
+    try {
+      await invoke("edit_note", { id: item.id, text: editText });
+      setEditing(false);
+    } catch (err) {
+      showToast(`保存失敗: ${err}`);
+    }
+  };
+
+  const handleEditKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setEditText(item.body ?? item.title);
+      setEditing(false);
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      void handleEditSave();
+    }
+  };
+
   // ブックマーク解除（bookmarks.json から削除、タグを外す）
   const handleUnbookmark = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -113,6 +146,15 @@ export function ItemCard({ item, highlightKeywords = [], onDelete }: Props) {
               {copied ? "✓" : "📋"}
             </button>
           )}
+          {isNote && !editing && (
+            <button
+              className="action-btn"
+              onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+              title="編集"
+            >
+              ✏️
+            </button>
+          )}
           {!isBookmarked && (
             <button
               className="action-btn"
@@ -134,28 +176,54 @@ export function ItemCard({ item, highlightKeywords = [], onDelete }: Props) {
         </div>
       </div>
 
-      <h3 className="item-title">
-        {item.url ? (
-          <a href={item.url} onClick={handleOpen}>
-            {highlightText(item.title, highlightKeywords)}
-          </a>
-        ) : (
-          highlightText(item.title, highlightKeywords)
-        )}
-      </h3>
-      {item.image_data && (
-        <div className="item-image-wrap">
-          <img
-            src={item.image_data}
-            alt="クリップボード画像"
-            className="item-image"
+      {editing ? (
+        <div className="item-edit-area">
+          <textarea
+            ref={editRef}
+            className="item-edit-textarea"
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            onKeyDown={handleEditKeyDown}
+            rows={5}
           />
+          <div className="item-edit-actions">
+            <span className="note-hint">⌘+Enter で保存 / Esc でキャンセル</span>
+            <div>
+              <button className="btn-secondary" onClick={() => { setEditText(item.body ?? item.title); setEditing(false); }}>
+                キャンセル
+              </button>
+              <button className="btn-primary" onClick={handleEditSave} disabled={!editText.trim()}>
+                保存
+              </button>
+            </div>
+          </div>
         </div>
-      )}
-      {item.body && (
-        <p className="item-body">
-          {highlightText(item.body, highlightKeywords)}
-        </p>
+      ) : (
+        <>
+          <h3 className="item-title">
+            {item.url ? (
+              <a href={item.url} onClick={handleOpen}>
+                {highlightText(item.title, highlightKeywords)}
+              </a>
+            ) : (
+              highlightText(item.title, highlightKeywords)
+            )}
+          </h3>
+          {item.image_data && (
+            <div className="item-image-wrap">
+              <img
+                src={item.image_data}
+                alt="クリップボード画像"
+                className="item-image"
+              />
+            </div>
+          )}
+          {item.body && (
+            <p className="item-body">
+              {highlightText(item.body, highlightKeywords)}
+            </p>
+          )}
+        </>
       )}
       {item.tags.length > 0 && (
         <div className="item-tags">

@@ -29,3 +29,4 @@ uuid = { version = "1", features = ["v4"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 base64 = "0.22"
 dirs-next = "2"
+tauri-plugin-global-shortcut = "2.3.1"
