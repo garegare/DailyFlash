@@ -32,6 +32,12 @@ name = "Qiita"
 url = "https://qiita.com/popular-items/feed.atom"
 icon = "qiita"
 
+# クリップボード監視（デフォルト有効・3秒間隔・4文字以上で検知）
+# [sources.clipboard]
+# enabled = true
+# poll_interval_secs = 3
+# min_chars = 4
+
 # GitHub コネクタ（Personal Access Token が必要）
 # [sources.github]
 # token = "ghp_xxxxxxxxxxxx"

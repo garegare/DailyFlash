@@ -40,10 +40,39 @@ pub struct DisplayConfig {
     pub highlight_keywords: Vec<String>,
 }
 
+/// クリップボード監視設定
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClipboardSourceConfig {
+    /// 監視を有効にする
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// クリップボードをポーリングする間隔（秒）
+    #[serde(default = "default_clipboard_interval")]
+    pub poll_interval_secs: u64,
+    /// 最小文字数（これ未満のテキストは無視）
+    #[serde(default = "default_min_chars")]
+    pub min_chars: usize,
+}
+
+fn default_true() -> bool { true }
+fn default_clipboard_interval() -> u64 { 3 }
+fn default_min_chars() -> usize { 4 }
+
+impl Default for ClipboardSourceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            poll_interval_secs: 3,
+            min_chars: 4,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SourcesConfig {
     pub rss: Option<RssSourceConfig>,
     pub github: Option<GithubSourceConfig>,
+    pub clipboard: Option<ClipboardSourceConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

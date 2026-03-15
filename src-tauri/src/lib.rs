@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+mod clipboard_monitor;
 mod config;
 mod connectors;
 mod error;
@@ -122,6 +123,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(config.clone())
         .manage(store.clone())
         .invoke_handler(tauri::generate_handler![
@@ -172,10 +174,18 @@ pub fn run() {
             // Push サーバー起動
             server::start(
                 app_handle.clone(),
-                store,
+                store.clone(),
                 config.server.port,
                 config.server.auth_token.clone(),
             );
+
+            // クリップボード監視起動
+            let clipboard_cfg = config
+                .sources
+                .clipboard
+                .clone()
+                .unwrap_or_default();
+            clipboard_monitor::start(app_handle.clone(), store, clipboard_cfg);
 
             // ---- タスクトレイ設定 ----
             setup_tray(app)?;
