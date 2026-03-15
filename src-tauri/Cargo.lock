@@ -734,6 +734,7 @@ dependencies = [
 name = "daily-flash"
 version = "0.1.0"
 dependencies = [
+ "arboard",
  "async-trait",
  "axum",
  "chrono",
