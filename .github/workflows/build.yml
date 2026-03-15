@@ -16,8 +16,13 @@ jobs:
         include:
           - platform: macos-latest
             args: "--target aarch64-apple-darwin"
+            rust-targets: aarch64-apple-darwin
           - platform: macos-latest
             args: "--target x86_64-apple-darwin"
+            rust-targets: x86_64-apple-darwin
+          - platform: windows-latest
+            args: "--target x86_64-pc-windows-msvc"
+            rust-targets: x86_64-pc-windows-msvc
 
     runs-on: ${{ matrix.platform }}
     permissions:
@@ -36,7 +41,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: ${{ matrix.rust-targets }}
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -51,7 +56,7 @@ jobs:
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: npm run tauri build -- ${{ matrix.args }}
 
-      # タグ push 時のみ: ドラフトリリースを作成して dmg をアップロード
+      # タグ push 時のみ: ドラフトリリースを作成してアーティファクトをアップロード
       - name: Build and release
         if: startsWith(github.ref, 'refs/tags/')
         uses: tauri-apps/tauri-action@v0
@@ -66,6 +71,7 @@ jobs:
             ### インストール方法
             - **macOS (Apple Silicon)**: `DailyFlash_*_aarch64.dmg` をダウンロード
             - **macOS (Intel)**: `DailyFlash_*_x64.dmg` をダウンロード
+            - **Windows (x64)**: `DailyFlash_*_x64-setup.exe` をダウンロード
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
