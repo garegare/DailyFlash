@@ -9,7 +9,7 @@ import { NoteInput } from "./NoteInput";
 import { SourceFilter, BOOKMARK_FILTER } from "./SourceFilter";
 
 export function Dashboard() {
-  const { items, loading, error, refresh, clearStore, highlightKeywords } = useDashboard();
+  const { items, loading, error, refresh, highlightKeywords } = useDashboard();
   const [activeSource, setActiveSource] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [exportMsg, setExportMsg] = useState<string | null>(null);
