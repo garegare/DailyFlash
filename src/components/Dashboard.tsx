@@ -1,7 +1,9 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useDashboard } from "../hooks/useDashboard";
 import { ItemCard } from "./ItemCard";
+import { NoteInput } from "./NoteInput";
 import { SourceFilter, BOOKMARK_FILTER } from "./SourceFilter";
 
 export function Dashboard() {
@@ -9,6 +11,27 @@ export function Dashboard() {
   const [activeSource, setActiveSource] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [exportMsg, setExportMsg] = useState<string | null>(null);
+  const [showNoteInput, setShowNoteInput] = useState(false);
+
+  // Cmd+N / Ctrl+N（アプリ内）でメモ入力を開く
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+        e.preventDefault();
+        setShowNoteInput(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  // Cmd+Shift+N グローバルショートカット（バックグラウンド時も動作）
+  useEffect(() => {
+    const unlisten = listen("open_note_input", () => {
+      setShowNoteInput(true);
+    });
+    return () => { void unlisten.then((f) => f()); };
+  }, []);
 
   // Bookmark (source_id === "bookmark") はアーカイブ扱いなので動的ソース一覧から除外
   const sources = useMemo(
@@ -62,10 +85,14 @@ export function Dashboard() {
 
   return (
     <div className="dashboard">
+      {showNoteInput && <NoteInput onClose={() => setShowNoteInput(false)} />}
       <header className="dashboard-header">
         <h1 className="dashboard-title">⚡ DailyFlash</h1>
         <div className="header-actions">
           <span className="item-count">{filtered.length} 件</span>
+          <button className="btn-icon" onClick={() => setShowNoteInput(true)} title="メモを追加 (⌘N)">
+            ✏️
+          </button>
           <button className="btn-icon" onClick={handleExport} title="JSON エクスポート">
             ↓
           </button>
