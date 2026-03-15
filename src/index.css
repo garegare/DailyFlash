@@ -151,6 +151,22 @@ body {
   color: #93c5fd;
 }
 
+.filter-chip--bookmark {
+  border-color: #92400e;
+  color: #d97706;
+}
+
+.filter-chip--bookmark:hover {
+  border-color: #b45309;
+  color: #fbbf24;
+}
+
+.filter-chip--bookmark.active {
+  background: #2d1f00;
+  border-color: #b45309;
+  color: #fbbf24;
+}
+
 /* ---- Item List ---- */
 .item-list {
   flex: 1;

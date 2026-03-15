@@ -234,6 +234,9 @@ pub fn run() {
                 let count = bookmarks.len();
                 let rt = tauri::async_runtime::handle();
                 for mut item in bookmarks {
+                    // ソースを "bookmark" に統一（「すべて」フィルタから除外するため）
+                    item.source_id = "bookmark".to_string();
+                    item.source_name = "Bookmark".to_string();
                     if !item.tags.contains(&"bookmark".to_string()) {
                         item.tags.push("bookmark".to_string());
                     }
