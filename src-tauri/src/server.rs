@@ -1,5 +1,5 @@
 use axum::{
-    extract::State,
+    extract::{Query, State},
     http::{HeaderMap, StatusCode},
     response::Json,
     routing::{get, post},
@@ -7,6 +7,7 @@ use axum::{
 };
 use chrono::Local;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
@@ -68,9 +69,11 @@ async fn health() -> &'static str {
 }
 
 /// GET /items — 現在のダッシュボードアイテムを JSON で返す
+/// クエリパラメータ: exclude_images=true で image_data フィールドを除外
 async fn get_items_handler(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     // Bearer トークン検証
     let auth = headers
@@ -82,7 +85,13 @@ async fn get_items_handler(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let items = state.store.all_items().await;
+    let exclude_images = params.get("exclude_images").map(|v| v == "true").unwrap_or(false);
+    let mut items = state.store.all_items().await;
+    if exclude_images {
+        for item in &mut items {
+            item.image_data = None;
+        }
+    }
     let count = items.len();
     Ok(Json(serde_json::json!({ "count": count, "items": items })))
 }
