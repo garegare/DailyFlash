@@ -137,6 +137,15 @@ export function ItemCard({ item, highlightKeywords = [], onDelete }: Props) {
           highlightText(item.title, highlightKeywords)
         )}
       </h3>
+      {item.image_data && (
+        <div className="item-image-wrap">
+          <img
+            src={item.image_data}
+            alt="クリップボード画像"
+            className="item-image"
+          />
+        </div>
+      )}
       {item.body && (
         <p className="item-body">
           {highlightText(item.body, highlightKeywords)}

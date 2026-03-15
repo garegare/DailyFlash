@@ -13,6 +13,9 @@ pub struct DashItem {
     pub title: String,
     pub body: Option<String>,
     pub url: Option<String>,
+    /// クリップボード画像などの base64 PNG data URL（例: "data:image/png;base64,..."）
+    #[serde(default)]
+    pub image_data: Option<String>,
     pub published_at: DateTime<Local>,
     pub tags: Vec<String>,
 }

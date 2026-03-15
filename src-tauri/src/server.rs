@@ -114,6 +114,7 @@ async fn push_handler(
         title: payload.title,
         body: payload.body,
         url: payload.url,
+        image_data: None,
         published_at: Local::now(),
         tags: payload.tags,
     };

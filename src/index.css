@@ -332,3 +332,24 @@ body {
   font-size: 0.65rem;
   padding: 1px 6px;
 }
+
+/* ---- Clipboard Image ---- */
+.item-image-wrap {
+  margin: 8px 0 4px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  /* 大きすぎる画像をカード幅に収める */
+  max-width: 100%;
+  line-height: 0;
+}
+
+.item-image {
+  display: block;
+  max-width: 100%;
+  /* 縦に長すぎる画像は 320px でクリップ */
+  max-height: 320px;
+  object-fit: contain;
+  cursor: zoom-in;
+}
