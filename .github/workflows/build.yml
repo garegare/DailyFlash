@@ -76,18 +76,4 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
-
-      # Windows のみ: ポータブル exe をリリースに追加アップロード
-      - name: Upload portable exe
-        if: startsWith(github.ref, 'refs/tags/') && matrix.rust-targets == 'x86_64-pc-windows-msvc'
-        shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $exe = Get-ChildItem -Path "src-tauri/target" -Filter "DailyFlash.exe" -Recurse |
-            Where-Object { $_.FullName -match "\\release\\DailyFlash\.exe$" } |
-            Select-Object -First 1
-          if (-not $exe) { Write-Error "DailyFlash.exe not found"; exit 1 }
-          Write-Host "Found: $($exe.FullName)"
-          Copy-Item $exe.FullName "DailyFlash_portable.exe"
-          gh release upload "${{ github.ref_name }}" DailyFlash_portable.exe --clobber
+          uploadPlainBinary: true
