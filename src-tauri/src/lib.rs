@@ -45,10 +45,21 @@ async fn delete_item(
     Ok(())
 }
 
+/// ~ をホームディレクトリに展開する
+fn expand_tilde(path: &str) -> std::path::PathBuf {
+    if let Some(rest) = path.strip_prefix("~/") {
+        if let Some(home) = dirs_next::home_dir() {
+            return home.join(rest);
+        }
+    }
+    std::path::PathBuf::from(path)
+}
+
 /// アイテムをローカル JSON ファイルにブックマーク保存する
 #[tauri::command]
 async fn bookmark_item(
     app: tauri::AppHandle,
+    config: tauri::State<'_, Config>,
     store: tauri::State<'_, DashStore>,
     id: String,
 ) -> Result<String, error::AppError> {
@@ -61,13 +72,21 @@ async fn bookmark_item(
         .find(|i| i.id == id)
         .ok_or_else(|| error::AppError::Validation("Item not found".to_string()))?;
 
-    // 保存先: {app_config_dir}/bookmarks.json
-    let config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| error::AppError::Validation(e.to_string()))?;
-    std::fs::create_dir_all(&config_dir)?;
-    let bookmarks_path = config_dir.join("bookmarks.json");
+    // 保存先: Config で指定されていればそちら、なければ {app_config_dir}/bookmarks.json
+    let bookmarks_path = if let Some(ref configured) = config.storage.bookmarks_path {
+        let path = expand_tilde(configured);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        path
+    } else {
+        let config_dir = app
+            .path()
+            .app_config_dir()
+            .map_err(|e| error::AppError::Validation(e.to_string()))?;
+        std::fs::create_dir_all(&config_dir)?;
+        config_dir.join("bookmarks.json")
+    };
 
     // 既存のブックマークを読み込む
     let mut bookmarks: Vec<DashItem> = if bookmarks_path.exists() {

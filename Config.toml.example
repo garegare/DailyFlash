@@ -5,6 +5,11 @@ auth_token = "your-secret-token-here"
 [memory]
 default_capacity = 50
 
+# ストレージ設定
+# [storage]
+# bookmarks_path = "~/Documents/dailyflash_bookmarks.json"  # ブックマーク保存先（~ 展開対応）
+# 未設定時は ~/Library/Application Support/com.dailyflash.app/bookmarks.json
+
 # ハイライト表示するキーワード（タイトル・説明文・タグを検索、大文字小文字無視）
 [display]
 highlight_keywords = ["Claude", "Rust", "React"]

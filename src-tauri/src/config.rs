@@ -8,6 +8,8 @@ pub struct Config {
     #[serde(default)]
     pub display: DisplayConfig,
     #[serde(default)]
+    pub storage: StorageConfig,
+    #[serde(default)]
     pub sources: SourcesConfig,
     #[serde(default)]
     pub windows: WindowsConfig,
@@ -30,6 +32,15 @@ impl Default for MemoryConfig {
             default_capacity: 50,
         }
     }
+}
+
+/// ストレージ設定
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StorageConfig {
+    /// ブックマーク保存先 JSON ファイルのパス。
+    /// 未設定時は {app_config_dir}/bookmarks.json を使用する。
+    /// ~ はホームディレクトリに展開される。
+    pub bookmarks_path: Option<String>,
 }
 
 /// 表示設定
@@ -184,6 +195,7 @@ impl Config {
             },
             memory: MemoryConfig::default(),
             display: DisplayConfig::default(),
+            storage: StorageConfig::default(),
             sources: SourcesConfig::default(),
             windows: WindowsConfig::default(),
         }
