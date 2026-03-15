@@ -6,6 +6,8 @@ pub struct Config {
     #[serde(default)]
     pub memory: MemoryConfig,
     #[serde(default)]
+    pub display: DisplayConfig,
+    #[serde(default)]
     pub sources: SourcesConfig,
     #[serde(default)]
     pub windows: WindowsConfig,
@@ -30,9 +32,18 @@ impl Default for MemoryConfig {
     }
 }
 
+/// 表示設定
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DisplayConfig {
+    /// ハイライト表示するキーワード一覧（大文字小文字無視）
+    #[serde(default)]
+    pub highlight_keywords: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SourcesConfig {
     pub rss: Option<RssSourceConfig>,
+    pub github: Option<GithubSourceConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,6 +66,21 @@ pub struct FeedConfig {
     pub url: String,
     #[serde(default)]
     pub icon: Option<String>,
+    /// フィード個別の lookback_days。未設定なら RssSourceConfig の値を使う
+    #[serde(default)]
+    pub lookback_days: Option<u32>,
+}
+
+/// GitHub コネクタ設定
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubSourceConfig {
+    /// GitHub Personal Access Token
+    pub token: String,
+    /// 取得対象のユーザー名
+    pub username: String,
+    pub poll_interval_secs: u64,
+    #[serde(default = "default_lookback_days")]
+    pub lookback_days: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,7 +110,6 @@ impl Config {
     }
 
     pub fn load_or_default() -> Self {
-        // 実行バイナリの場所を基準に Config.toml を探す
         let candidates = Self::config_candidates();
         for path in &candidates {
             if path.exists() {
@@ -103,14 +128,12 @@ impl Config {
 
     fn config_candidates() -> Vec<std::path::PathBuf> {
         let mut candidates = vec![
-            std::path::PathBuf::from("Config.toml"),        // cwd/Config.toml
-            std::path::PathBuf::from("../Config.toml"),     // cwd/../Config.toml (dev: src-tauri/../)
+            std::path::PathBuf::from("Config.toml"),
+            std::path::PathBuf::from("../Config.toml"),
         ];
-        // 実行バイナリ隣の Config.toml
         if let Ok(exe) = std::env::current_exe() {
             if let Some(dir) = exe.parent() {
                 candidates.push(dir.join("Config.toml"));
-                // macOS アプリバンドル内: Contents/MacOS/../../../
                 if let Some(parent) = dir.parent() {
                     candidates.push(parent.join("Config.toml"));
                 }
@@ -126,6 +149,7 @@ impl Config {
                 auth_token: "change-me".to_string(),
             },
             memory: MemoryConfig::default(),
+            display: DisplayConfig::default(),
             sources: SourcesConfig::default(),
             windows: WindowsConfig::default(),
         }

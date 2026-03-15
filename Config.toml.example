@@ -4,9 +4,10 @@ auth_token = "your-secret-token-here"
 
 [memory]
 default_capacity = 50
-# ソース個別のオーバーライド (未実装・将来対応)
-# [memory.overrides]
-# "my-ci" = 100
+
+# ハイライト表示するキーワード（タイトル・説明文・タグを検索、大文字小文字無視）
+[display]
+highlight_keywords = ["Claude", "Rust", "React"]
 
 [sources.rss]
 poll_interval_secs = 300
@@ -17,12 +18,7 @@ id = "hacker-news"
 name = "Hacker News"
 url = "https://news.ycombinator.com/rss"
 icon = "hn"
-
-[[sources.rss.feeds]]
-id = "rust-blog"
-name = "Rust Blog"
-url = "https://blog.rust-lang.org/feed.xml"
-icon = "rust"
+# lookback_days = 7  # フィード個別に上書き可能
 
 [[sources.rss.feeds]]
 id = "zenn"
@@ -35,6 +31,13 @@ id = "qiita"
 name = "Qiita"
 url = "https://qiita.com/popular-items/feed.atom"
 icon = "qiita"
+
+# GitHub コネクタ（Personal Access Token が必要）
+# [sources.github]
+# token = "ghp_xxxxxxxxxxxx"
+# username = "your-github-username"
+# poll_interval_secs = 300
+# lookback_days = 3
 
 [windows]
 startup = false
