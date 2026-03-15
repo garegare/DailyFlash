@@ -71,7 +71,18 @@ jobs:
             ### インストール方法
             - **macOS (Apple Silicon)**: `DailyFlash_*_aarch64.dmg` をダウンロード
             - **macOS (Intel)**: `DailyFlash_*_x64.dmg` をダウンロード
-            - **Windows (x64)**: `DailyFlash_*_x64-setup.exe` をダウンロード
+            - **Windows (x64) インストーラ**: `DailyFlash_*_x64-setup.exe` をダウンロード
+            - **Windows (x64) ポータブル**: `DailyFlash_portable.exe` をダウンロード（インストール不要、そのまま実行可）
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      # Windows のみ: ポータブル exe をリリースに追加アップロード
+      - name: Upload portable exe
+        if: startsWith(github.ref, 'refs/tags/') && matrix.rust-targets == 'x86_64-pc-windows-msvc'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp src-tauri/target/x86_64-pc-windows-msvc/release/DailyFlash.exe DailyFlash_portable.exe
+          gh release upload ${{ github.ref_name }} DailyFlash_portable.exe --clobber
