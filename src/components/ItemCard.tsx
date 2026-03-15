@@ -27,6 +27,7 @@ function highlightText(text: string, keywords: string[]): React.ReactNode {
 export function ItemCard({ item, highlightKeywords = [], onDelete }: Props) {
   const [copied, setCopied] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
+  const isBookmarked = bookmarked || item.tags.includes("bookmark");
   const [toast, setToast] = useState<string | null>(null);
 
   const dt = new Date(item.published_at);
@@ -75,18 +76,19 @@ export function ItemCard({ item, highlightKeywords = [], onDelete }: Props) {
   const handleBookmark = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const path = await invoke<string>("bookmark_item", { id: item.id });
+      await invoke<string>("bookmark_item", { id: item.id });
       setBookmarked(true);
-      showToast(`保存: ${path}`);
     } catch (err) {
       showToast(`ブックマーク失敗: ${err}`);
     }
   };
 
-  const handleDelete = async (e: React.MouseEvent) => {
+  // ブックマーク解除（bookmarks.json から削除、タグを外す）
+  const handleUnbookmark = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await invoke("delete_item", { id: item.id });
+      await invoke("unbookmark_item", { id: item.id });
+      setBookmarked(false);
       onDelete?.(item.id);
     } catch (err) {
       showToast(`削除失敗: ${err}`);
@@ -111,20 +113,24 @@ export function ItemCard({ item, highlightKeywords = [], onDelete }: Props) {
               {copied ? "✓" : "📋"}
             </button>
           )}
-          <button
-            className={`action-btn${bookmarked ? " action-btn--done" : ""}`}
-            onClick={handleBookmark}
-            title="JSONファイルにブックマーク"
-          >
-            {bookmarked ? "✓" : "⭐"}
-          </button>
-          <button
-            className="action-btn action-btn--danger"
-            onClick={handleDelete}
-            title="削除"
-          >
-            🗑️
-          </button>
+          {!isBookmarked && (
+            <button
+              className="action-btn"
+              onClick={handleBookmark}
+              title="JSONファイルにブックマーク"
+            >
+              ⭐
+            </button>
+          )}
+          {isBookmarked && (
+            <button
+              className="action-btn action-btn--danger"
+              onClick={handleUnbookmark}
+              title="ブックマークから削除"
+            >
+              🗑️
+            </button>
+          )}
         </div>
       </div>
 

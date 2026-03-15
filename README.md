@@ -16,7 +16,7 @@
 6. [データフロー](#6-データフロー)
 7. [コネクタ設計](#7-コネクタ設計)
 8. [Push 受信サーバー仕様](#8-push受信サーバー仕様)
-9. [Windows 常駐仕様](#9-windows常駐仕様)
+9. [タスクトレイ常駐仕様](#9-タスクトレイ常駐仕様)
 10. [設定ファイル仕様](#10-設定ファイル仕様)
 11. [エラーハンドリング方針](#11-エラーハンドリング方針)
 12. [フロントエンド設計](#12-フロントエンド設計)
@@ -29,10 +29,12 @@
 
 DailyFlash は「情報の蓄積」を意図的に排除したダッシュボードアプリ。
 
-- **揮発性**: アプリ終了でデータは完全消去。永続ストレージへの書き込みは行わない
+- **揮発性**: アプリ終了でデータは完全消去。ブックマークを除く永続ストレージへの書き込みは行わない
 - **ルックバック表示**: 当日＋直近 N 日（`lookback_days`）のアイテムを表示対象とする
 - **低コンテキスト負荷**: 読み切れなかった情報は翌日には存在しない設計
 - **ブラウザ連携**: アイテムカードをクリックするとシステムデフォルトブラウザで URL を開く
+- **クリップボード監視**: テキスト・画像のコピーを自動検知してダッシュボードに表示
+- **ブックマーク**: 重要なアイテムを JSON ファイルに永続保存し、再起動後も閲覧可能
 
 ---
 
@@ -40,12 +42,14 @@ DailyFlash は「情報の蓄積」を意図的に排除したダッシュボー
 
 | 概念 | 説明 |
 |------|------|
-| **エフェメラル** | プロセス終了 = データ消去。SQLite・ファイルキャッシュ等への永続化は行わない |
+| **エフェメラル** | プロセス終了 = データ消去。ブックマーク以外は SQLite・ファイルキャッシュ等への永続化は行わない |
 | **コネクタ方式** | `Connector` トレイトで抽象化された Pull 型ソース（RSS/Atom 等）を動的に追加可能 |
 | **プッシュ受容** | 内蔵 HTTP サーバーが外部アプリ（CI、監視ツール等）からのリアルタイム通知を受信 |
+| **クリップボード監視** | OS クリップボードを定期ポーリングし、テキスト・画像を自動キャプチャ |
 | **リングバッファ** | 全ソース共通の最大保持件数を設定。容量超過時は最古アイテムを自動破棄 |
 | **重複排除** | アイテムを `(source_id, item_id)` の組でハッシュ管理し、Pull 周期をまたいだ重複追加を防止 |
 | **時系列混在表示** | 複数ソースのアイテムを `published_at` 降順でソートし、ソースに関係なく時系列に表示 |
+| **ブックマーク** | ⭐ボタンで `bookmarks.json` に永続保存。起動時に自動読み込みされ Bookmark タブで閲覧可能 |
 
 ---
 
@@ -64,7 +68,12 @@ DailyFlash は「情報の蓄積」を意図的に排除したダッシュボー
 | `serde` / `toml` | 設定ファイル管理 |
 | `async-trait` | 非同期トレイト実装 |
 | `thiserror` | 統一エラー型定義 |
+| `arboard` | クリップボードアクセス（テキスト・画像） |
+| `image` | クリップボード画像の PNG エンコード |
+| `base64` | 画像データの Base64 変換（data URL 形式） |
+| `dirs-next` | ホームディレクトリ取得（`~` 展開） |
 | `tauri-plugin-opener` | システムブラウザでの URL オープン |
+| `tauri-plugin-clipboard-manager` | Tauri クリップボードプラグイン |
 
 ### フロントエンド (TypeScript)
 
@@ -89,22 +98,33 @@ DailyFlash は「情報の蓄積」を意図的に排除したダッシュボー
 │                                       │  <RingBuf>>) │  │
 │  ┌──────────┐   Push (即時)           │             │  │
 │  │  axum    │ ──────────────────────→ │             │  │
-│  │  Server  │                         └──────┬──────┘  │
-│  └──────────┘                                │         │
+│  │  Server  │                         │             │  │
+│  └──────────┘                         │             │  │
+│                                       │             │  │
+│  ┌──────────┐   定期ポーリング        │             │  │
+│  │Clipboard │ ──────────────────────→ │             │  │
+│  │ Monitor  │  テキスト/画像キャプチャ │             │  │
+│  └──────────┘                         └──────┬──────┘  │
+│                                              │         │
 │                                              │ emit    │
-│  ┌──────────────────────┐                    ↓         │
-│  │  Tauri Commands      │  ←── refresh_dashboard       │
-│  │  - refresh_dashboard │                              │
-│  │  - get_config        │                              │
-│  │  - clear_store       │                              │
-│  └──────────┬───────────┘                              │
+│  ┌──────────────────────────────┐            ↓         │
+│  │  Tauri Commands              │  ←── dashboard_updated│
+│  │  - refresh_dashboard         │                      │
+│  │  - get_config                │                      │
+│  │  - clear_store               │                      │
+│  │  - bookmark_item             │                      │
+│  │  - unbookmark_item           │                      │
+│  │  - export_items              │                      │
+│  └──────────┬───────────────────┘                      │
+│             │              bookmarks.json (永続)        │
 └─────────────│────────────────────────────────────────── ┘
               │ IPC (invoke / listen)
 ┌─────────────↓───────────────────────────────────────────┐
 │  WebView (React フロントエンド)                          │
 │  - published_at 降順でアイテム一覧表示                  │
-│  - ソース別フィルタ（チップ UI）                        │
+│  - ソース別フィルタ / Bookmark タブ（チップ UI）        │
 │  - カードクリック → システムブラウザで URL を開く       │
+│  - ⭐ボタンでブックマーク / 🗑️ボタンで解除            │
 │  - dashboard_updated イベントでリアルタイム更新         │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -125,8 +145,8 @@ DailyFlash/
 │   ├── App.tsx                   # ルートコンポーネント
 │   ├── components/
 │   │   ├── Dashboard.tsx         # メインダッシュボード（フィルタ・一覧）
-│   │   ├── ItemCard.tsx          # アイテムカード（日時・タイトル・タグ・ブラウザ連携）
-│   │   └── SourceFilter.tsx      # ソース別フィルタ（チップ UI）
+│   │   ├── ItemCard.tsx          # アイテムカード（日時・タイトル・タグ・ブックマーク）
+│   │   └── SourceFilter.tsx      # ソース別フィルタ（Bookmark タブ含む）
 │   └── hooks/
 │       └── useDashboard.ts       # Tauri IPC フック（invoke / listen / polling）
 ├── src-tauri/
@@ -144,6 +164,7 @@ DailyFlash/
 │       ├── store.rs              # DashStore: RwLock + RingBuffer 実装
 │       ├── scheduler.rs          # Pull スケジューラ（起動直後に即時実行）
 │       ├── server.rs             # axum Push 受信サーバー
+│       ├── clipboard_monitor.rs  # クリップボード監視（テキスト・画像対応）
 │       ├── error.rs              # 統一エラー型定義
 │       └── connectors/
 │           ├── mod.rs            # Connector トレイト定義
@@ -170,6 +191,8 @@ DailyFlash/
       └─ 起動直後に即時 fetch 実行
       └─ 以降 poll_interval_secs ごとに fetch
   └─ Push サーバー起動 (axum, 127.0.0.1:8080)
+  └─ bookmarks.json 読み込み → ストアへ追加（source_id = "bookmark"）
+  └─ クリップボード監視起動（poll_interval_secs 間隔）
 ```
 
 ### 6.2 Pull 処理（定期実行）
@@ -195,12 +218,48 @@ POST /push リクエスト受信
   └─ フロントエンドに dashboard_updated イベント emit
 ```
 
-### 6.4 表示処理
+### 6.4 クリップボード監視
+
+```
+クリップボード監視タスク（OS スレッドで実行、macOS NSPasteboard 制約対応）
+  └─ poll_interval_secs ごとにクリップボード内容を取得
+      └─ テキスト変化を検知 → DashItem として push
+      └─ テキストなし → 画像を確認
+          └─ 画像変化を検知 → RGBA → PNG → Base64 data URL に変換
+          └─ DashItem (image_data フィールド) として push
+          └─ タイトルで重複排除（画像サイズが同じなら同一視）
+  └─ max_items 超過時は古いクリップボードアイテムを削除
+  └─ フロントエンドに dashboard_updated イベント emit
+```
+
+### 6.5 ブックマーク処理
+
+```
+⭐ボタンクリック → bookmark_item コマンド
+  └─ ストアからアイテムを取得
+  └─ "bookmark" タグを付与
+  └─ bookmarks.json に追記（同 ID は上書き）
+  └─ ストアのアイテムをタグ付き版に更新
+  └─ dashboard_updated イベント emit
+
+起動時
+  └─ bookmarks.json 読み込み
+  └─ source_id = "bookmark" として DashStore に追加
+  └─ Bookmark タブにのみ表示（「すべて」には非表示）
+
+🗑️ボタンクリック（ブックマーク済みアイテムのみ表示）→ unbookmark_item コマンド
+  └─ bookmarks.json から該当アイテムを削除
+  └─ source_id = "bookmark" のアイテム → ストアから削除
+  └─ 通常ソースのアイテム → bookmark タグを外してストアに戻す
+  └─ dashboard_updated イベント emit
+```
+
+### 6.6 表示処理
 
 ```
 フロントエンド (dashboard_updated イベント受信 または 30 秒フォールバック polling)
   └─ invoke("refresh_dashboard") → DashStore 全件 JSON 取得
-  └─ published_at 降順でソート（Rust 側 + フロントエンド側で二重保証）
+  └─ published_at 降順でソート
   └─ React state 更新 → 再描画
   └─ カードクリック → openUrl() でシステムブラウザを起動
 ```
@@ -227,13 +286,14 @@ pub trait Connector: Send + Sync {
 ```rust
 pub struct DashItem {
     pub id: String,              // アイテム固有ID (重複排除用)
-    pub source_id: String,       // ソース識別子
+    pub source_id: String,       // ソース識別子（"bookmark" は特別扱い）
     pub source_name: String,     // 表示用ソース名
     pub title: String,
     pub body: Option<String>,    // 本文サマリ (任意)
     pub url: Option<String>,
+    pub image_data: Option<String>, // Base64 data URL（クリップボード画像等）
     pub published_at: DateTime<Local>,
-    pub tags: Vec<String>,
+    pub tags: Vec<String>,       // "bookmark" タグで永続保存済みを識別
 }
 ```
 
@@ -307,6 +367,11 @@ auth_token = "your-secret-token-here"
 # 全ソース共通のリングバッファ最大保持件数
 default_capacity = 50
 
+# ストレージ設定
+# [storage]
+# bookmarks_path = "~/Documents/dailyflash_bookmarks.json"
+# 未設定時は ~/Library/Application Support/com.dailyflash.app/bookmarks.json
+
 # ハイライト表示するキーワード（タイトル・説明文・タグを検索、大文字小文字無視）
 [display]
 highlight_keywords = ["Claude", "Rust"]
@@ -325,6 +390,13 @@ url = "https://zenn.dev/feed"
 id = "qiita"
 name = "Qiita"
 url = "https://qiita.com/popular-items/feed.atom"
+
+# クリップボード監視（デフォルト有効）
+# [sources.clipboard]
+# enabled = true
+# poll_interval_secs = 3   # ポーリング間隔
+# min_chars = 4            # テキスト検知の最小文字数
+# max_items = 10           # ダッシュボードに保持するクリップボードカードの最大枚数
 
 # GitHub コネクタ（Personal Access Token が必要）
 # [sources.github]
@@ -388,21 +460,39 @@ pub enum AppError {
 | Command | `refresh_dashboard` | Front → Back | 全アイテム取得（published_at 降順） |
 | Command | `get_config` | Front → Back | 現在の設定取得 |
 | Command | `clear_store` | Front → Back | 手動でストアをクリア |
-| Event | `dashboard_updated` | Back → Front | 新規アイテム追加通知 |
+| Command | `delete_item` | Front → Back | 指定アイテムをストアから削除 |
+| Command | `bookmark_item` | Front → Back | アイテムを bookmarks.json に保存し "bookmark" タグを付与 |
+| Command | `unbookmark_item` | Front → Back | bookmarks.json から削除し bookmark タグを解除 |
+| Command | `export_items` | Front → Back | 全アイテムを JSON ファイルにエクスポート |
+| Event | `dashboard_updated` | Back → Front | 新規アイテム追加・変更通知 |
 
 ### UI コンポーネント構成
 
 ```
 <App>
   └── <Dashboard>
-        ├── <header>       アイテム件数・更新ボタン (↻)・クリアボタン (✕)
-        ├── <SourceFilter> ソース別フィルタ（チップ UI）
+        ├── <header>       アイテム件数・エクスポート(↓)・更新(↻)・クリア(✕)ボタン
+        ├── <search-bar>   タイトル・本文・タグでのテキスト絞り込み
+        ├── <SourceFilter> ソース別フィルタ（すべて / ⭐Bookmark / 各ソース）
         └── <ItemCard>     各アイテムカード
               ├── ソース名 / 年月日時刻
+              ├── アクションボタン（ホバーで表示）
+              │     ├── 📋 URLコピー（URL がある場合）
+              │     ├── ⭐ ブックマーク（未ブックマーク時のみ）
+              │     └── 🗑️ ブックマーク解除（ブックマーク済み時のみ）
               ├── タイトル（クリックでブラウザ起動）
+              ├── 画像（クリップボード画像の場合）
               ├── 本文サマリ（3 行クランプ）
-              └── タグ一覧
+              └── タグ一覧（"bookmark" タグは ⭐ 付きで強調表示）
 ```
+
+### ブックマークのフィルタ動作
+
+| タブ | 表示対象 |
+|------|---------|
+| **すべて** | 通常アイテム + ブックマークタグ付きアイテム（起動時読み込み分は除外） |
+| **⭐ Bookmark** | 起動時に bookmarks.json から読み込んだアーカイブ + 当セッションでブックマークしたアイテム |
+| **ソース別** | 各ソースの通常アイテム + そのソースのブックマークタグ付きアイテム |
 
 ### useDashboard フック
 
@@ -474,6 +564,9 @@ curl -X POST http://localhost:8080/push \
 | **キーワードハイライト** | Config で設定したキーワードを含むアイテムをカード・テキストレベルでハイライト | ✅ 実装済み |
 | **タスクトレイ常駐** | ウィンドウ「×」で非表示、トレイ左クリックでトグル、右クリックメニューで終了 | ✅ 実装済み |
 | **フィード個別 lookback_days** | ソースごとに異なるルックバック日数を `lookback_days` で設定可能 | ✅ 実装済み |
+| **クリップボード監視** | テキスト・画像のコピーを自動検知してダッシュボードに表示 | ✅ 実装済み |
+| **ブックマーク機能** | ⭐ボタンで JSON ファイルに永続保存、Bookmark タブで閲覧・解除可能 | ✅ 実装済み |
+| **JSON エクスポート** | 現在のダッシュボードアイテムを JSON ファイルに書き出す | ✅ 実装済み |
 | **Slack Webhook 受信** | Slack の Outgoing Webhook を DailyFlash の Push に中継 | 未実装 |
 | **ホットキー** | グローバルショートカットでウィンドウの表示/非表示トグル | 未実装 |
 | **アイテム詳細パネル** | クリックで本文・メタデータをサイドパネルに展開表示 | 未実装 |

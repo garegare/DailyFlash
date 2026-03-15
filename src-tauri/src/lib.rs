@@ -135,6 +135,46 @@ async fn bookmark_item(
     Ok(bookmarks_path.to_string_lossy().to_string())
 }
 
+/// ブックマークを解除する（bookmarks.json から削除し、ストアのタグも外す）
+#[tauri::command]
+async fn unbookmark_item(
+    app: tauri::AppHandle,
+    config: tauri::State<'_, Config>,
+    store: tauri::State<'_, DashStore>,
+    id: String,
+) -> Result<(), error::AppError> {
+    use tauri::{Emitter, Manager};
+
+    // bookmarks.json から該当アイテムを削除
+    let fallback_dir = app.path().app_config_dir().ok();
+    if let Some(bm_path) = resolve_bookmarks_path(&config.storage, fallback_dir) {
+        if bm_path.exists() {
+            let content = std::fs::read_to_string(&bm_path)?;
+            let mut bookmarks: Vec<DashItem> = serde_json::from_str(&content).unwrap_or_default();
+            bookmarks.retain(|b| b.id != id);
+            let json = serde_json::to_string_pretty(&bookmarks)
+                .map_err(|e| error::AppError::Validation(e.to_string()))?;
+            std::fs::write(&bm_path, json)?;
+        }
+    }
+
+    // ストアから対象アイテムを探す
+    let items = store.all_items().await;
+    if let Some(item) = items.into_iter().find(|i| i.id == id) {
+        store.remove_item(&id).await;
+        if item.source_id != "bookmark" {
+            // 通常ソースのアイテム: bookmark タグを外してストアに戻す
+            let mut updated = item;
+            updated.tags.retain(|t| t != "bookmark");
+            store.push(updated).await;
+        }
+        // source_id == "bookmark" のアーカイブ済みアイテムはストアから削除のみ
+    }
+
+    let _ = app.emit("dashboard_updated", ());
+    Ok(())
+}
+
 /// 現在のダッシュボードアイテムを JSON ファイルにエクスポートする
 #[tauri::command]
 async fn export_items(
@@ -179,6 +219,7 @@ pub fn run() {
             clear_store,
             delete_item,
             bookmark_item,
+            unbookmark_item,
             export_items,
         ])
         .setup(move |app| {

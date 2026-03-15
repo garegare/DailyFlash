@@ -26,8 +26,8 @@ export function Dashboard() {
         // Bookmark タブ: アーカイブ済み (source_id=bookmark) + 今セッションで⭐したもの
         if (i.source_id !== "bookmark" && !i.tags.includes("bookmark")) return false;
       } else {
-        // すべて / ソース別: bookmark タグ付き・アーカイブ済みブックマークは除外
-        if (i.source_id === "bookmark" || i.tags.includes("bookmark")) return false;
+        // すべて / ソース別: アーカイブ済みブックマーク（起動時読み込み分）のみ除外
+        if (i.source_id === "bookmark") return false;
         if (activeSource && i.source_name !== activeSource) return false;
       }
       if (!q) return true;
