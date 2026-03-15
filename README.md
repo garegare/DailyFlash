@@ -147,7 +147,8 @@ DailyFlash/
 │       ├── error.rs              # 統一エラー型定義
 │       └── connectors/
 │           ├── mod.rs            # Connector トレイト定義
-│           └── rss.rs            # RSS/Atom コネクタ実装（lookback_days フィルタ）
+│           ├── rss.rs            # RSS/Atom コネクタ実装（lookback_days フィルタ）
+│           └── github.rs         # GitHub Events コネクタ実装
 ├── Config.toml                   # ローカル設定ファイル (.gitignore 済み)
 ├── Config.toml.example           # 設定ファイルのサンプル
 ├── .gitignore
@@ -281,13 +282,13 @@ pub struct DashItem {
 
 ---
 
-## 9. Windows 常駐仕様
+## 9. タスクトレイ常駐仕様
 
 | イベント | 動作 |
 |---------|------|
 | ウィンドウ「×」ボタン | `window.hide()` でバックグラウンド常駐（終了しない） |
-| タスクトレイ ダブルクリック | ウィンドウを前面表示 |
-| タスクトレイ 右クリック | コンテキストメニュー表示（「完全終了」「設定を開く」） |
+| タスクトレイ 左クリック | ウィンドウの表示/非表示をトグル |
+| タスクトレイ 右クリック | コンテキストメニュー表示（「ウィンドウを表示」「終了」） |
 | Push 受信 (バックグラウンド時) | OS 標準通知トースト表示 |
 | スタートアップ | `Config.toml` の `windows.startup` が `true` の場合、ログイン時に自動起動 |
 
@@ -306,6 +307,10 @@ auth_token = "your-secret-token-here"
 # 全ソース共通のリングバッファ最大保持件数
 default_capacity = 50
 
+# ハイライト表示するキーワード（タイトル・説明文・タグを検索、大文字小文字無視）
+[display]
+highlight_keywords = ["Claude", "Rust"]
+
 [sources.rss]
 poll_interval_secs = 300  # Pull 間隔 (秒)
 lookback_days = 3         # 当日 + 直近 N 日分を表示対象とする
@@ -314,11 +319,19 @@ lookback_days = 3         # 当日 + 直近 N 日分を表示対象とする
 id = "zenn"
 name = "Zenn"
 url = "https://zenn.dev/feed"
+# lookback_days = 7       # フィード個別に上書き可能（省略時はソースレベル値を使用）
 
 [[sources.rss.feeds]]
 id = "qiita"
 name = "Qiita"
 url = "https://qiita.com/popular-items/feed.atom"
+
+# GitHub コネクタ（Personal Access Token が必要）
+# [sources.github]
+# token = "ghp_xxxxxxxxxxxx"
+# username = "your-github-username"
+# poll_interval_secs = 300
+# lookback_days = 3
 
 [windows]
 startup = false          # ログイン時の自動起動
@@ -455,15 +468,15 @@ curl -X POST http://localhost:8080/push \
 
 ## 14. 今後の拡張候補
 
-| 機能 | 概要 |
-|------|------|
-| **GitHub コネクタ** | 自分のリポジトリの今日のイベント（PR, Issue, CI）を Pull |
-| **Slack Webhook 受信** | Slack の Outgoing Webhook を DailyFlash の Push に中継 |
-| **キーワードフィルタ** | Config で設定したキーワードを含むアイテムをハイライト or 除外 |
-| **タスクトレイ常駐** | ウィンドウ「×」で最小化、トレイアイコンから再表示 |
-| **ホットキー** | グローバルショートカットでウィンドウの表示/非表示トグル |
-| **アイテム詳細パネル** | クリックで本文・メタデータをサイドパネルに展開表示 |
-| **フィード個別 lookback_days** | ソースごとに異なるルックバック日数を設定可能にする |
+| 機能 | 概要 | 状態 |
+|------|------|------|
+| **GitHub コネクタ** | ユーザーの今日のイベント（Push, PR, Issue, Star 等）を Pull | ✅ 実装済み |
+| **キーワードハイライト** | Config で設定したキーワードを含むアイテムをカード・テキストレベルでハイライト | ✅ 実装済み |
+| **タスクトレイ常駐** | ウィンドウ「×」で非表示、トレイ左クリックでトグル、右クリックメニューで終了 | ✅ 実装済み |
+| **フィード個別 lookback_days** | ソースごとに異なるルックバック日数を `lookback_days` で設定可能 | ✅ 実装済み |
+| **Slack Webhook 受信** | Slack の Outgoing Webhook を DailyFlash の Push に中継 | 未実装 |
+| **ホットキー** | グローバルショートカットでウィンドウの表示/非表示トグル | 未実装 |
+| **アイテム詳細パネル** | クリックで本文・メタデータをサイドパネルに展開表示 | 未実装 |
 
 ---
 
