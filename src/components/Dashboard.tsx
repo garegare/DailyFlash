@@ -4,7 +4,7 @@ import { ItemCard } from "./ItemCard";
 import { SourceFilter } from "./SourceFilter";
 
 export function Dashboard() {
-  const { items, loading, error, refresh, clearStore } = useDashboard();
+  const { items, loading, error, refresh, clearStore, highlightKeywords } = useDashboard();
   const [activeSource, setActiveSource] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
@@ -72,7 +72,7 @@ export function Dashboard() {
           <p className="state-msg">今日のアイテムはまだありません</p>
         )}
         {filtered.map((item) => (
-          <ItemCard key={item.id} item={item} />
+          <ItemCard key={item.id} item={item} highlightKeywords={highlightKeywords} />
         ))}
       </main>
     </div>

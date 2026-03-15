@@ -184,6 +184,25 @@ body {
   border-color: #2a2a2a;
 }
 
+/* キーワードハイライト対象カード */
+.item-card--highlighted {
+  border-left: 3px solid #f59e0b;
+  background: #181510;
+}
+
+.item-card--highlighted:hover {
+  border-left-color: #fbbf24;
+}
+
+/* テキスト内キーワードマーク */
+.kw-mark {
+  background: rgba(245, 158, 11, 0.25);
+  border-radius: 2px;
+  color: #fbbf24;
+  font-style: normal;
+  padding: 0 2px;
+}
+
 .item-meta {
   display: flex;
   align-items: center;

@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use crate::store::DashItem;
 
 pub mod rss;
+pub mod github;
 
 /// Pull 型ソースの共通インターフェース
 #[async_trait]

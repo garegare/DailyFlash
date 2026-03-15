@@ -17,6 +17,16 @@ export function useDashboard() {
   const [items, setItems] = useState<DashItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [highlightKeywords, setHighlightKeywords] = useState<string[]>([]);
+
+  // Config からハイライトキーワードを取得（初回のみ）
+  useEffect(() => {
+    invoke<{ display?: { highlight_keywords?: string[] } }>("get_config")
+      .then((cfg) => {
+        setHighlightKeywords(cfg.display?.highlight_keywords ?? []);
+      })
+      .catch(() => {});
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -57,5 +67,5 @@ export function useDashboard() {
     setItems([]);
   }, []);
 
-  return { items, loading, error, refresh, clearStore };
+  return { items, loading, error, refresh, clearStore, highlightKeywords };
 }
