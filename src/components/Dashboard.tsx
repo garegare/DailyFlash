@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useDashboard } from "../hooks/useDashboard";
 import { ItemCard } from "./ItemCard";
 import { NoteInput } from "./NoteInput";
@@ -72,13 +74,34 @@ export function Dashboard() {
     [refresh],
   );
 
+  // 保存ダイアログでファイルパスを選択してエクスポート
   const handleExport = useCallback(async () => {
     try {
-      const path = await invoke<string>("export_items");
-      setExportMsg(`保存: ${path}`);
-      setTimeout(() => setExportMsg(null), 3000);
+      const now = new Date();
+      const ts = now.toISOString().slice(0, 19).replace(/[-T:]/g, "").replace(/(\d{8})(\d{6})/, "$1_$2");
+      const savePath = await save({
+        filters: [{ name: "JSON", extensions: ["json"] }],
+        defaultPath: `dailyflash_export_${ts}.json`,
+      });
+      if (!savePath) return; // キャンセル
+      await invoke("export_items_to_path", { path: savePath });
+      setExportMsg("保存しました");
+      setTimeout(() => setExportMsg(null), 2000);
     } catch (e) {
       setExportMsg(`エクスポート失敗: ${e}`);
+      setTimeout(() => setExportMsg(null), 3000);
+    }
+  }, []);
+
+  // クリップボードに JSON をコピー
+  const handleCopyJson = useCallback(async () => {
+    try {
+      const json = await invoke<string>("get_items_json");
+      await writeText(json);
+      setExportMsg("クリップボードにコピーしました");
+      setTimeout(() => setExportMsg(null), 2000);
+    } catch (e) {
+      setExportMsg(`コピー失敗: ${e}`);
       setTimeout(() => setExportMsg(null), 3000);
     }
   }, []);
@@ -93,14 +116,14 @@ export function Dashboard() {
           <button className="btn-icon" onClick={() => setShowNoteInput(true)} title="メモを追加 (⌘N)">
             ✏️
           </button>
-          <button className="btn-icon" onClick={handleExport} title="JSON エクスポート">
+          <button className="btn-icon" onClick={handleCopyJson} title="JSON をクリップボードにコピー">
+            📋
+          </button>
+          <button className="btn-icon" onClick={handleExport} title="JSON をファイルに保存">
             ↓
           </button>
           <button className="btn-icon" onClick={refresh} title="更新">
             ↻
-          </button>
-          <button className="btn-icon danger" onClick={clearStore} title="クリア">
-            ✕
           </button>
         </div>
       </header>

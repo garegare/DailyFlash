@@ -254,30 +254,27 @@ async fn unbookmark_item(
     Ok(())
 }
 
-/// 現在のダッシュボードアイテムを JSON ファイルにエクスポートする
+/// 指定パスにダッシュボードアイテムを JSON エクスポートする（フロントが保存ダイアログでパスを選択）
 #[tauri::command]
-async fn export_items(
-    app: tauri::AppHandle,
+async fn export_items_to_path(
     store: tauri::State<'_, DashStore>,
-) -> Result<String, error::AppError> {
-    use tauri::Manager;
-    use chrono::Local;
-
+    path: String,
+) -> Result<(), error::AppError> {
     let items = store.all_items().await;
-    let timestamp = Local::now().format("%Y%m%d_%H%M%S");
-
-    let config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| error::AppError::Validation(e.to_string()))?;
-    std::fs::create_dir_all(&config_dir)?;
-    let export_path = config_dir.join(format!("export_{timestamp}.json"));
-
     let json = serde_json::to_string_pretty(&items)
         .map_err(|e| error::AppError::Validation(e.to_string()))?;
-    std::fs::write(&export_path, json)?;
+    std::fs::write(&path, json)?;
+    Ok(())
+}
 
-    Ok(export_path.to_string_lossy().to_string())
+/// ダッシュボードアイテムの JSON 文字列を返す（クリップボードコピー用）
+#[tauri::command]
+async fn get_items_json(
+    store: tauri::State<'_, DashStore>,
+) -> Result<String, error::AppError> {
+    let items = store.all_items().await;
+    serde_json::to_string_pretty(&items)
+        .map_err(|e| error::AppError::Validation(e.to_string()))
 }
 
 // ---- エントリポイント ----
@@ -291,6 +288,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .manage(config.clone())
         .manage(store.clone())
         .invoke_handler(tauri::generate_handler![
@@ -302,7 +300,8 @@ pub fn run() {
             unbookmark_item,
             add_note,
             edit_note,
-            export_items,
+            export_items_to_path,
+            get_items_json,
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();

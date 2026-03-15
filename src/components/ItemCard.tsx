@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { DashItem } from "../hooks/useDashboard";
 
 interface Props {
@@ -77,7 +78,7 @@ export function ItemCard({ item, highlightKeywords = [], onDelete }: Props) {
     e.stopPropagation();
     if (!item.url) return;
     try {
-      await navigator.clipboard.writeText(item.url);
+      await writeText(item.url);
       setCopied(true);
       showToast("URLをコピーしました");
       setTimeout(() => setCopied(false), 2000);
