@@ -333,6 +333,13 @@ body {
   padding: 1px 6px;
 }
 
+.tag--bookmark {
+  background: #2d1f00;
+  border-color: #92400e;
+  color: #fbbf24;
+  font-weight: 600;
+}
+
 /* ---- Clipboard Image ---- */
 .item-image-wrap {
   margin: 8px 0 4px;

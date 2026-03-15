@@ -55,6 +55,33 @@ fn expand_tilde(path: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(path)
 }
 
+/// bookmarks.json のパスを解決する（Config 指定優先、なければ fallback_dir/bookmarks.json）
+fn resolve_bookmarks_path(
+    storage: &config::StorageConfig,
+    fallback_dir: Option<std::path::PathBuf>,
+) -> Option<std::path::PathBuf> {
+    if let Some(ref configured) = storage.bookmarks_path {
+        Some(expand_tilde(configured))
+    } else {
+        fallback_dir.map(|d| d.join("bookmarks.json"))
+    }
+}
+
+/// bookmarks.json を読み込んで DashItem のリストを返す
+fn load_bookmarks(path: &std::path::Path) -> Vec<DashItem> {
+    if !path.exists() {
+        return vec![];
+    }
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[bookmark] read error: {e}");
+            return vec![];
+        }
+    };
+    serde_json::from_str(&content).unwrap_or_default()
+}
+
 /// アイテムをローカル JSON ファイルにブックマーク保存する
 #[tauri::command]
 async fn bookmark_item(
@@ -63,30 +90,27 @@ async fn bookmark_item(
     store: tauri::State<'_, DashStore>,
     id: String,
 ) -> Result<String, error::AppError> {
-    use tauri::Manager;
+    use tauri::{Emitter, Manager};
 
     // ストアから対象アイテムを探す
     let items = store.all_items().await;
-    let item = items
+    let mut item = items
         .into_iter()
         .find(|i| i.id == id)
         .ok_or_else(|| error::AppError::Validation("Item not found".to_string()))?;
 
-    // 保存先: Config で指定されていればそちら、なければ {app_config_dir}/bookmarks.json
-    let bookmarks_path = if let Some(ref configured) = config.storage.bookmarks_path {
-        let path = expand_tilde(configured);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        path
-    } else {
-        let config_dir = app
-            .path()
-            .app_config_dir()
-            .map_err(|e| error::AppError::Validation(e.to_string()))?;
-        std::fs::create_dir_all(&config_dir)?;
-        config_dir.join("bookmarks.json")
-    };
+    // "bookmark" タグを付与（まだなければ）
+    if !item.tags.contains(&"bookmark".to_string()) {
+        item.tags.push("bookmark".to_string());
+    }
+
+    // 保存先パスを解決
+    let fallback_dir = app.path().app_config_dir().ok();
+    let bookmarks_path = resolve_bookmarks_path(&config.storage, fallback_dir)
+        .ok_or_else(|| error::AppError::Validation("bookmarks path unavailable".to_string()))?;
+    if let Some(parent) = bookmarks_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
 
     // 既存のブックマークを読み込む
     let mut bookmarks: Vec<DashItem> = if bookmarks_path.exists() {
@@ -96,13 +120,17 @@ async fn bookmark_item(
         vec![]
     };
 
-    // 重複チェック（同じ ID は追加しない）
-    if !bookmarks.iter().any(|b| b.id == item.id) {
-        bookmarks.push(item);
-        let json = serde_json::to_string_pretty(&bookmarks)
-            .map_err(|e| error::AppError::Validation(e.to_string()))?;
-        std::fs::write(&bookmarks_path, json)?;
-    }
+    // 重複チェック（同じ ID は上書き保存）
+    bookmarks.retain(|b| b.id != item.id);
+    bookmarks.push(item.clone());
+    let json = serde_json::to_string_pretty(&bookmarks)
+        .map_err(|e| error::AppError::Validation(e.to_string()))?;
+    std::fs::write(&bookmarks_path, json)?;
+
+    // ストアの既存アイテムを bookmark タグ付きで置き換えてダッシュボードを更新
+    store.remove_item(&item.id).await;
+    store.push(item).await;
+    let _ = app.emit("dashboard_updated", ());
 
     Ok(bookmarks_path.to_string_lossy().to_string())
 }
@@ -197,6 +225,23 @@ pub fn run() {
                 config.server.port,
                 config.server.auth_token.clone(),
             );
+
+            // ブックマークを起動時にストアへ読み込む
+            use tauri::Manager;
+            let fallback_dir = app.path().app_config_dir().ok();
+            if let Some(bm_path) = resolve_bookmarks_path(&config.storage, fallback_dir) {
+                let bookmarks = load_bookmarks(&bm_path);
+                let count = bookmarks.len();
+                let rt = tauri::async_runtime::handle();
+                for mut item in bookmarks {
+                    if !item.tags.contains(&"bookmark".to_string()) {
+                        item.tags.push("bookmark".to_string());
+                    }
+                    let s = store.clone();
+                    rt.block_on(async move { s.push(item).await; });
+                }
+                eprintln!("[bookmark] loaded {count} bookmarks from {}", bm_path.display());
+            }
 
             // クリップボード監視起動
             let clipboard_cfg = config

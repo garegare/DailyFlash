@@ -154,8 +154,11 @@ export function ItemCard({ item, highlightKeywords = [], onDelete }: Props) {
       {item.tags.length > 0 && (
         <div className="item-tags">
           {item.tags.map((tag) => (
-            <span key={tag} className="tag">
-              {tag}
+            <span
+              key={tag}
+              className={`tag${tag === "bookmark" ? " tag--bookmark" : ""}`}
+            >
+              {tag === "bookmark" ? "⭐ bookmark" : tag}
             </span>
           ))}
         </div>
