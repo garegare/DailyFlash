@@ -97,6 +97,46 @@ impl DashStore {
         self.inner.write().await.remove(id);
     }
 
+    /// クリップボード専用の push。
+    /// - 同じタイトル（＝同じコピー内容）の既存クリップボードカードを先に削除する
+    /// - クリップボードカードが max_items 以上あれば古い順に削除する
+    /// - その後に新アイテムを追加する
+    pub async fn push_clipboard(&self, item: DashItem, max_items: usize) {
+        let mut buf = self.inner.write().await;
+
+        // 同内容（タイトル一致）の古いクリップボードカードを削除
+        let same_title_ids: Vec<String> = buf
+            .items
+            .iter()
+            .filter(|i| i.source_id == "clipboard" && i.title == item.title)
+            .map(|i| i.id.clone())
+            .collect();
+        for id in &same_title_ids {
+            buf.remove(id);
+        }
+
+        // クリップボードカードが max_items 以上なら古い順に削除
+        loop {
+            let clipboard_count = buf.items.iter().filter(|i| i.source_id == "clipboard").count();
+            if clipboard_count < max_items {
+                break;
+            }
+            // 最古のクリップボードカードを探して削除
+            let oldest_id = buf
+                .items
+                .iter()
+                .find(|i| i.source_id == "clipboard")
+                .map(|i| i.id.clone());
+            if let Some(id) = oldest_id {
+                buf.remove(&id);
+            } else {
+                break;
+            }
+        }
+
+        buf.push(item);
+    }
+
     pub async fn clear(&self) {
         self.inner.write().await.clear();
     }

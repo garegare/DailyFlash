@@ -52,11 +52,15 @@ pub struct ClipboardSourceConfig {
     /// 最小文字数（これ未満のテキストは無視）
     #[serde(default = "default_min_chars")]
     pub min_chars: usize,
+    /// ダッシュボードに保持するクリップボードカードの最大枚数
+    #[serde(default = "default_clipboard_max_items")]
+    pub max_items: usize,
 }
 
 fn default_true() -> bool { true }
 fn default_clipboard_interval() -> u64 { 3 }
 fn default_min_chars() -> usize { 4 }
+fn default_clipboard_max_items() -> usize { 10 }
 
 impl Default for ClipboardSourceConfig {
     fn default() -> Self {
@@ -64,6 +68,7 @@ impl Default for ClipboardSourceConfig {
             enabled: true,
             poll_interval_secs: 3,
             min_chars: 4,
+            max_items: 10,
         }
     }
 }

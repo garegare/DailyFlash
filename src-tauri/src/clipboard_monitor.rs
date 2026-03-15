@@ -108,7 +108,7 @@ pub fn start(app: AppHandle, store: DashStore, config: ClipboardSourceConfig) {
             };
 
             rt.block_on(async {
-                store.push(item).await;
+                store.push_clipboard(item, config.max_items).await;
             });
             let _ = app.emit("dashboard_updated", ());
             eprintln!("[clipboard] new item captured");

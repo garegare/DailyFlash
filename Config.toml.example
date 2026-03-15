@@ -37,6 +37,7 @@ icon = "qiita"
 # enabled = true
 # poll_interval_secs = 3
 # min_chars = 4
+# max_items = 10  # ダッシュボードに保持するクリップボードカードの最大枚数
 
 # GitHub コネクタ（Personal Access Token が必要）
 # [sources.github]
